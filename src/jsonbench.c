@@ -108,6 +108,17 @@ strcpy(available_engines[engine_count++], "YAJL");
                 return 0;
             case 'e':
                 jsonengine    = strdup(optarg);
+                int i = 0;
+                for(int i = 0; i < engine_count; i++) {
+                    if (strcmp(jsonengine, available_engines[i]) == 0) {
+                        break;
+                    }
+                }
+                if (i == engine_count) {
+                    fprintf(stderr, "JSON engine '%s' is not available!\n", jsonengine);
+                    free(jsonengine);
+                    return EXIT_FAILURE;
+                }
                 break;
             case 'a':
                 arg_limit     = atoi(optarg);
@@ -145,7 +156,6 @@ strcpy(available_engines[engine_count++], "YAJL");
             return EXIT_FAILURE;
         }
 
-#if HAVE_YAJL
         int rc = read_file(jsonfile, data);
         if (rc == 0) {
             printf("Zero character read from file\n");
@@ -158,6 +168,7 @@ strcpy(available_engines[engine_count++], "YAJL");
         else {
             length = rc;
         }
+#if HAVE_YAJL
         if (strcmp(jsonengine, "YAJL") == 0) {
             yajl_json_data *json = NULL;
             yajl_json_init(&json, &error_msg);

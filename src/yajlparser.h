@@ -2,10 +2,7 @@
 #define YAJLPARSER_H
 
 #include "../config.h"
-
-#ifndef JSON_STRING_SIZE
-#define JSON_STRING_SIZE 2048
-#endif
+#include "jsonbench.h"
 
 #if HAVE_YAJL
 
@@ -44,7 +41,7 @@ int yajl_json_cleanup(yajl_json_data *json);
 int yajl_json_process_chunk(yajl_json_data *json, const char *buf,
         unsigned int size, char **error_msg);
 
-int json_cleanup(yajl_json_data *json);
+int yajl_json_cleanup(yajl_json_data *json);
 
 #endif
 

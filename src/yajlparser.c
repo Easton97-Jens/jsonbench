@@ -129,7 +129,7 @@ static int yajl_start_array(void *ctx) {
     yajl_json_data *p = (yajl_json_data *) ctx;
     assert(p != NULL);
 
-    if (p->prefix_len == 0) {
+    if (p->prefix_len == 0 && p->current_key_len == 0) {
         memcpy(p->prefix, "array", 5);
         p->prefix_len = 5;
         p->prefix[p->prefix_len] = '\0';
@@ -137,10 +137,15 @@ static int yajl_start_array(void *ctx) {
         p->current_key_len = 5;
         p->current_key[p->current_key_len] = '\0';
     }
-    else {
+    else if (p->prefix_len > 0) {
         memcpy(p->prefix + p->prefix_len, ".", 1);
         p->prefix_len++;
         memcpy(p->prefix + p->prefix_len, p->current_key, p->current_key_len);
+        p->prefix_len += p->current_key_len;
+        p->prefix[p->prefix_len] = '\0';
+    }
+    else {
+        memcpy(p->prefix, p->current_key, p->current_key_len);
         p->prefix_len += p->current_key_len;
         p->prefix[p->prefix_len] = '\0';
     }

@@ -7,18 +7,21 @@ Welcome to the `jsonbench` documentation.
 
 The purpose of this tool is to compare the performance of different JSON C libraries and to show what to expect from a possible alternative JSON processor. For more details, take a look at the tool's source. Currently, mod_security2 and libmodsecurity3 use YAJL for JSON processing. Unfortunately, this library is deprecated and is no longer supported by its maintainer.
 
-Note that mod_security2 processes JSON and creates keys and values. Keys are the names of the JSON keys and values ​​are their values. If the JSON object is an array, the key will be the string `array`. For multidimensional arrays, the key is `array.array.....`.
+Note that mod_security2 processes JSON and creates keys and values. Keys are the names of the JSON keys and values are their values. If the JSON object is an array, the key will be the string `array`. For multidimensional arrays, the key is `array.array.....`.
 
 ## Requirements
 
 To compile the code you need the any of these JSON C libraries (hopefully this will be expand):
 * yajl
+* RapidJSON
 
 To install them, try these commands:
 
 ```bash
-sudo apt install libyajl-dev libyajl2
+sudo apt install libyajl-dev libyajl2 rapidjson-dev
 ```
+
+Note, that RapidJSON is a "header-only" parser, you need to install `rapidjson-dev`.
 
 You also need `autoconf`, `automake`, `autotools-dev`, `make` and `gcc` or `clang` packages:
 
@@ -66,14 +69,20 @@ src/jsonbench -h
 
 Or if you want to try a parser:
 ```bash
-src/jsonbench -e yajl
+src/jsonbench -e YAJL
+```
+
+or
+
+```bash
+src/jsonbench -e RAPIDJSON
 ```
 
 ### Other command line flags
 
 `src/jsonbench -h` gives a full list of available options. Here is a detailed review:
 
-* `-e` sets the JSON engine (if there is any). Currently the tool supports only YAJL, so you can pass `-e YAJL` (with capital letters).
+* `-e` sets the JSON engine (if there is any). Currently the tool supports YAJL and RAPIDJSON, so you can pass `-e YAJL` or `-e RAPIDJSON` (with capital letters).
 * `-d` sets the maximum depth of the JSON strcture. The default value is 500. This option is the same as the [SecRequestBodyJsonDepthLimit](https://github.com/owasp-modsecurity/ModSecurity/wiki/Reference-Manual-(v2.x)#user-content-SecRequestBodyJsonDepthLimit) in ModSecurity. When the processor reached this limit with the processed depth, the tool terminates with error.
 * `-a` sets the maximum size of arguments. The default value is 500. This option is the same as the [SecArgumentsLimit](https://github.com/owasp-modsecurity/ModSecurity/wiki/Reference-Manual-(v2.x)#secargumentslimit) in ModSecurity. When the processor reached this limit with the processed arguments, the tool terminates with error.
 * `-s` keeps the tool in silence, and don't print out the processed data. This can be help to measure the performance more accurate.

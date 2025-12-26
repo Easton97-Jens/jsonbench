@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "../config.h"
 #include "yajlparser.h"
+#include "rjparser.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -101,6 +102,10 @@ int main(int argc, char ** argv) {
 strcpy(available_engines[engine_count++], "YAJL");
 #endif
 
+#ifdef HAVE_RAPIDJSON
+strcpy(available_engines[engine_count++], "RAPIDJSON");
+#endif
+
     while ((c = getopt(argc, argv, "he:a:d:s")) != -1) {
         switch (c) {
             case 'h':
@@ -191,6 +196,40 @@ strcpy(available_engines[engine_count++], "YAJL");
                 yajl_json_cleanup(json);
                 printf("\nTime: %ld.%09ld usec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
             }
+        }
+#endif
+#if HAVE_RAPIDJSON
+        if (strcmp(jsonengine, "RAPIDJSON") == 0) {
+
+            rj_parser *json = NULL;
+            char * error_msg = NULL;
+            rj_json_init(&json, &error_msg);
+            if (json == NULL) {
+                fprintf(stderr, "Failed to initialize JSON parser\n");
+                return 2;
+            }
+
+            rj_set_max_depth(json, depth_limit);
+            rj_set_max_arg_num(json, arg_limit);
+            rj_set_silence(json, silence);
+
+            clock_gettime(CLOCK_REALTIME, &ts_before);
+            int rc = rj_parse_buffer(json, data, length, &error_msg);
+            if (rc != 0) {
+                fprintf(stderr, "Parse failed with code %d\n", rc);
+                fprintf(stderr, "Error: %s\n", error_msg);
+                free(error_msg);
+                return 3;
+            }
+            else {
+                clock_gettime(CLOCK_REALTIME, &ts_after);
+                ts_diff.tv_sec  = 0;
+                ts_diff.tv_nsec = 0;
+                timespec_diff(&ts_after, &ts_before, &ts_diff);
+                rj_json_cleanup(json);
+                printf("\nTime: %ld.%09ld usec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+            }
+
         }
 #endif
         free(jsonengine);

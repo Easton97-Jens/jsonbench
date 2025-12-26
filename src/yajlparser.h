@@ -2,7 +2,6 @@
 #define YAJLPARSER_H
 
 #include "../config.h"
-#include "jsonbench.h"
 
 #if HAVE_YAJL
 

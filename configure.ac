@@ -111,6 +111,31 @@ fi
 
 dnl # END try to find YAJL
 
+dnl Check if we want to use rapidjson or not
+AC_MSG_CHECKING([whether to use rapidjson])
+AC_ARG_WITH(
+    [rapidjson],
+    [AS_HELP_STRING([--with-rapidjson], [Enable rapidjson (default is enabled if exists)])],
+    [case "$withval" in
+        yes) wantrapidjson=yes ;;
+        no)  wantrapidjson=no; AC_DEFINE([HAVE_RAPIDJSON], [0], [Mark that user does not want RapidJSON]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+    esac],
+    [wantrapidjson="notset"]
+)
+
+if test "$wantrapidjson" != "no"; then
+  AC_LANG_PUSH([C++])
+
+  AC_CHECK_HEADERS([rapidjson/reader.h], [],
+    [AC_MSG_ERROR([RapidJSON headers not found. Install rapidjson or use --disable-rapidjson])]
+  )
+  AC_DEFINE([HAVE_RAPIDJSON], [1], [Mark that user wants RapidJSON])
+  AC_LANG_POP([C++])
+fi
+
+AM_CONDITIONAL([HAVE_RAPIDJSON], [test "x$enable_rapidjson" = "xyes"])
+
 AC_ARG_WITH(
     [file-buffer-size],
     AS_HELP_STRING([--with-file-buffer-size=SIZE], [Set buffer size (default: 524288 bytes (512kB))]),
@@ -121,9 +146,9 @@ AC_DEFINE_UNQUOTED([FILE_BUFFER_SIZE], [$FILE_BUFFER_SIZE], [Define file buffer 
 
 AC_ARG_WITH(
     [json-string-size],
-    AS_HELP_STRING([--with-json-string-size=SIZE], [Set buffer size for JSON strings (key, values) (default: 2048 bytes (2kB))]),
+    AS_HELP_STRING([--with-json-string-size=SIZE], [Set buffer size for JSON strings (key, values) (default: 8192 bytes (8kB))]),
     [JSON_STRING_SIZE=$withval],
-    [JSON_STRING_SIZE=2048]  # default file buffer size
+    [JSON_STRING_SIZE=8192]  # default file buffer size
 )
 AC_DEFINE_UNQUOTED([JSON_STRING_SIZE], [$JSON_STRING_SIZE], [Define JSON string size])
 

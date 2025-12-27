@@ -14,14 +14,15 @@ Note that mod_security2 processes JSON and creates keys and values. Keys are the
 To compile the code you need the any of these JSON C libraries (hopefully this will be expand):
 * yajl
 * RapidJSON
+* nlohmann JSON
 
 To install them, try these commands:
 
 ```bash
-sudo apt install libyajl-dev libyajl2 rapidjson-dev
+sudo apt install libyajl-dev libyajl2 rapidjson-dev nlohmann-json3.12-dev
 ```
 
-Note, that RapidJSON is a "header-only" parser, you need to install `rapidjson-dev`.
+Note, that RapidJSON and nlohmann JSON are "header-only" parsers, you need to install `rapidjson-dev` and `nlohmann-json3.12-dev`.
 
 You also need `autoconf`, `automake`, `autotools-dev`, `make` and `gcc` or `clang` packages:
 
@@ -78,6 +79,10 @@ or
 src/jsonbench -e RAPIDJSON
 ```
 
+```bash
+src/jsonbench -e NLOHMANNJSON
+```
+
 ### Other command line flags
 
 `src/jsonbench -h` gives a full list of available options. Here is a detailed review:
@@ -118,6 +123,34 @@ array.array.created_at: 2015-01-01T15:00:01Z
 Time: 0.000747715 usec
 ```
 This command process the file `tests/test06.json` and prints out the processed keys and values. The syntax is the same as in case of mod_security2 JSON processing.
+
+Here is a "quick" command to check the performance of three parsers:
+
+```bash
+$ src/jsonbench -s -e YAJL -a 10000 tests/test06.json; src/jsonbench -s -e RAPIDJSON -a 10000 tests/test06.json; src/jsonbench -s -e NLOHMANNJSON -a 10000 tests/test06.json
+
+Time: 0.000092567 usec
+
+
+Time: 0.000103500 usec
+
+
+Time: 0.000196825 usec
+```
+
+or if you want to see the result (note, that there is no `-s`):
+
+```bash
+$ src/jsonbench -e YAJL -a 10000 tests/test06.json; src/jsonbench -e RAPIDJSON -a 10000 tests/test06.json; src/jsonbench -e NLOHMANNJSON -a 10000 tests/test06.json
+array.array.id: 2489651045
+array.array.type: CreateEvent
+array.array.actor.id: 665991
+array.array.actor.login: petroav
+array.array.actor.gravatar_id: 
+array.array.actor.url: https://api.github.com/users/petroav
+array.array.actor.avatar_url: https://avatars.githubusercontent.com/u/665991?
+array.array.repo.id: 28688495
+```
 
 ## TODO
 

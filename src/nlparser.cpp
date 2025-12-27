@@ -286,6 +286,7 @@ extern "C" int nl_json_init(nl_parser **parser, char **error_msg) {
  * Frees the resources used for JSON parsing.
  */
 extern "C" int nl_json_cleanup(nl_parser *parser) {
+    delete(parser->impl);
     delete(parser);
     return 0;
 }

@@ -135,6 +135,35 @@ if test "$wantrapidjson" != "no"; then
 fi
 
 AM_CONDITIONAL([HAVE_RAPIDJSON], [test "x$enable_rapidjson" = "xyes"])
+#dnl End check for rapidjson
+
+
+dnl Check if we want to use nlohmannjson or not
+AC_MSG_CHECKING([whether to use nlohmannjson])
+AC_ARG_WITH(
+    [nlohmannjson],
+    [AS_HELP_STRING([--with-nlohmannjson], [Enable nlohmannjson (default is enabled if exists)])],
+    [case "$withval" in
+        yes) wannlohmannjson=yes ;;
+        no)  wannlohmannjson=no; AC_DEFINE([HAVE_NLOHMANNJSON], [0], [Mark that user does not want NlohmannJSON]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+    esac],
+    [wannlohmannjson="notset"]
+)
+
+if test "$wannlohmannjson" != "no"; then
+  AC_LANG_PUSH([C++])
+
+  AC_CHECK_HEADERS([nlohmann/json.hpp], [],
+    [AC_MSG_ERROR([NlohmannJSON headers not found. Install nlohmannjson or use --disable-nlohmannjson])]
+  )
+  AC_DEFINE([HAVE_NLOHMANNJSON], [1], [Mark that user wants NlohmannJSON])
+  AC_LANG_POP([C++])
+fi
+
+AM_CONDITIONAL([HAVE_NLOHMANNJSON], [test "x$enable_nlohmannjson" = "xyes"])
+#dnl End check for nlohmannjson
+
 
 AC_ARG_WITH(
     [file-buffer-size],

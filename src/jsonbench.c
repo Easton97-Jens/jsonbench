@@ -2,6 +2,7 @@
 #include "../config.h"
 #include "yajlparser.h"
 #include "rjparser.h"
+#include "nlparser.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -104,6 +105,10 @@ strcpy(available_engines[engine_count++], "YAJL");
 
 #ifdef HAVE_RAPIDJSON
 strcpy(available_engines[engine_count++], "RAPIDJSON");
+#endif
+
+#ifdef HAVE_NLOHMANNJSON
+strcpy(available_engines[engine_count++], "NLOHMANNJSON");
 #endif
 
     while ((c = getopt(argc, argv, "he:a:d:s")) != -1) {
@@ -227,6 +232,40 @@ strcpy(available_engines[engine_count++], "RAPIDJSON");
                 ts_diff.tv_nsec = 0;
                 timespec_diff(&ts_after, &ts_before, &ts_diff);
                 rj_json_cleanup(json);
+                printf("\nTime: %ld.%09ld usec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+            }
+
+        }
+#endif
+#if HAVE_NLOHMANNJSON
+        if (strcmp(jsonengine, "NLOHMANNJSON") == 0) {
+
+            nl_parser *json = NULL;
+            char * error_msg = NULL;
+            nl_json_init(&json, &error_msg);
+            if (json == NULL) {
+                fprintf(stderr, "Failed to initialize JSON parser\n");
+                return 2;
+            }
+
+            nl_set_max_depth(json, depth_limit);
+            nl_set_max_arg_num(json, arg_limit);
+            nl_set_silence(json, silence);
+
+            clock_gettime(CLOCK_REALTIME, &ts_before);
+            int rc = nl_parse_buffer(json, data, length, &error_msg);
+            if (rc != 0) {
+                fprintf(stderr, "Parse failed with code %d\n", rc);
+                fprintf(stderr, "Error: %s\n", error_msg);
+                free(error_msg);
+                return 3;
+            }
+            else {
+                clock_gettime(CLOCK_REALTIME, &ts_after);
+                ts_diff.tv_sec  = 0;
+                ts_diff.tv_nsec = 0;
+                timespec_diff(&ts_after, &ts_before, &ts_diff);
+                nl_json_cleanup(json);
                 printf("\nTime: %ld.%09ld usec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
             }
 

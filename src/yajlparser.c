@@ -9,7 +9,7 @@
 
 const char *base_offset=NULL;
 
-int json_add_argument(yajl_json_data *p, const unsigned char *value, unsigned length)
+static int json_add_argument(yajl_json_data *p, const unsigned char *value, unsigned length)
 {
     assert(p != NULL);
 

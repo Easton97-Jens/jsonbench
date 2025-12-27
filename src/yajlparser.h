@@ -15,17 +15,18 @@ struct yajl_json_data {
     yajl_status status;
 
     /* prefix is used to create data hierarchy (i.e., 'parent.child.value') */
-    unsigned char *prefix;
-    size_t         prefix_len;
-    unsigned char *current_key;
-    size_t         current_key_len;
-    long int       current_depth;
-    long int       depth_limit;
-    int            depth_limit_exceeded;
-    long int       current_arg_num;
-    long int       arg_num_limit;
-    int            arg_num_limit_exceeded;
-    int            silence;
+    // Note that cppcheck-suppress needed to avoid false positive for unused struct members
+    unsigned char *prefix;                   // cppcheck-suppress unusedStructMember
+    size_t         prefix_len;               // cppcheck-suppress unusedStructMember
+    unsigned char *current_key;              // cppcheck-suppress unusedStructMember
+    size_t         current_key_len;          // cppcheck-suppress unusedStructMember
+    long int       current_depth;            // cppcheck-suppress unusedStructMember
+    long int       depth_limit;              // cppcheck-suppress unusedStructMember
+    int            depth_limit_exceeded;     // cppcheck-suppress unusedStructMember
+    long int       current_arg_num;          // cppcheck-suppress unusedStructMember
+    long int       arg_num_limit;            // cppcheck-suppress unusedStructMember
+    int            arg_num_limit_exceeded;   // cppcheck-suppress unusedStructMember
+    int            silence;                  // cppcheck-suppress unusedStructMember
 };
 
 int yajl_json_init(yajl_json_data **json, char **error_msg);

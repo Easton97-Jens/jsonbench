@@ -14,9 +14,9 @@
 #include "rapidjson/error/en.h"
 
 class RJSAXHandler {
-    void *ctx;  // contect from C
-public:
+  public:
     explicit RJSAXHandler():
+    m_max_depth(0),
     m_current_depth(0),
     m_depth_limit_exceeded(false),
     m_current_key(JSON_STRING_SIZE, '\0'),
@@ -35,11 +35,9 @@ public:
     }
 
     bool addArgument(const std::string& value) {
-        /*
         if (m_silence) {
             return true;
         }
-        */
 
         std::string argname(JSON_STRING_SIZE, '\0');
         std::string argval(JSON_STRING_SIZE, '\0');
@@ -72,9 +70,7 @@ public:
         }
         argval.replace(0, value.size(), value);
         argval.resize(value.size());
-        if (!m_silence) {
-            std::cout << argname << ": " << argval << std::endl;
-        }
+        std::cout << argname << ": " << argval << std::endl;
         m_arg_num_counter++;
         if (m_arg_num_limit > 0 &&
             m_arg_num_counter > m_arg_num_limit) {
@@ -86,7 +82,7 @@ public:
     }
 
     /* RapidJSON mandatory methods */
-    bool StartObject() {
+    bool StartObject() {  // cppcheck-suppress unusedFunction
         if (m_prefix_len == 0) {
             m_prefix = m_current_key;
             m_prefix_len = m_current_key_len;
@@ -106,15 +102,16 @@ public:
         return true;
     }
 
-    bool EndObject(rapidjson::SizeType)   {
+    bool EndObject(rapidjson::SizeType) {   // cppcheck-suppress unusedFunction
 
         size_t separator = static_cast<size_t>(m_prefix_len);
         for(int i = static_cast<int>(m_prefix_len) - 1; i >= 0; i--) {
-            if (m_prefix[i] == '.') {
+            if (m_prefix[i] == '.') {  // cppcheck-suppress useStlAlgorithm
                 separator = static_cast<size_t>(i);
                 break;
             }
         }
+
         if (separator < m_prefix_len) {
             m_current_key.replace(0, m_prefix_len - separator - 1,
                 m_prefix.substr(separator + 1, m_prefix_len - separator - 1));
@@ -133,14 +130,12 @@ public:
         return true;
     }
 
-    bool StartArray()  {
+    bool StartArray() {  // cppcheck-suppress unusedFunction
         if (m_prefix_len == 0 && m_current_key_len == 0) {
             m_prefix = "array";
-            m_prefix_len = 5;
-            m_prefix[m_prefix_len] = '\0';
+            m_prefix_len = m_prefix.size();
             m_current_key = "array";
-            m_current_key_len = 5;
-            m_current_key[m_current_key_len] = '\0';
+            m_current_key_len = m_current_key.size();
         }
         else if (m_prefix_len > 0) {
             m_prefix.replace(m_prefix_len, 1, ".");
@@ -162,10 +157,10 @@ public:
         return true;
     }
 
-    bool EndArray(rapidjson::SizeType) {
+    bool EndArray(rapidjson::SizeType) {   // cppcheck-suppress unusedFunction
         size_t separator = static_cast<size_t>(m_prefix_len);
         for(int i = static_cast<int>(m_prefix_len) - 1; i >= 0; i--) {
-            if (m_prefix[i] == '.') {
+            if (m_prefix[i] == '.') { // cppcheck-suppress useStlAlgorithm
                 separator = static_cast<size_t>(i);
                 break;
             }
@@ -182,34 +177,34 @@ public:
         return true;
     }
 
-    bool Key(const char* k, size_t l, bool) {
-        m_current_key.replace(0, l, std::string((const char*)k, l));
+    bool Key(const char* k, size_t l, bool) {  // cppcheck-suppress unusedFunction
+        m_current_key.replace(0, l, std::string(reinterpret_cast<const char*>(k), l));
         m_current_key_len = l;
         m_current_key[m_current_key_len] = '\0';
         return true;
     }
 
-    bool String(const char* v, size_t l, bool b) {
-        std::string val = std::string((const char*)v, l);
+    bool String(const char* v, size_t l, bool b) {  // cppcheck-suppress unusedFunction
+        std::string val = std::string(reinterpret_cast<const char*>(v), l);
         return addArgument(val);
     }
 
-    bool Int(int64_t v) {
+    bool Int(int64_t v) {  // cppcheck-suppress unusedFunction
         std::string val = std::to_string(v);
         return addArgument(val);
     }
 
-    bool Uint(uint64_t v) {
+    bool Uint(uint64_t v) {  // cppcheck-suppress unusedFunction
         std::string val = std::to_string(v);
         return addArgument(val);
     }
 
-    bool Double(double v) {
+    bool Double(double v) {  // cppcheck-suppress unusedFunction
         std::string val = std::to_string(v);
         return addArgument(val);
     }
 
-    bool Bool(bool b) {
+    bool Bool(bool b) {  // cppcheck-suppress unusedFunction
         if (b) {
             addArgument("true");
         } else {
@@ -218,23 +213,23 @@ public:
         return true;
     }
 
-    bool Null() {
+    bool Null() {  // cppcheck-suppress unusedFunction
         addArgument("");
         return true;
     }
 
-    bool RawNumber(const char* str, rapidjson::SizeType length, bool) {
-        std::string val = std::string((const char*)str, length);
+    bool RawNumber(const char* str, rapidjson::SizeType length, bool) {  // cppcheck-suppress unusedFunction
+        std::string val = std::string(reinterpret_cast<const char*>(str), length);
         return addArgument(val);
     }
 
-    bool Int64(int64_t i) {
-        std::string val = std::string((const char*)i);
+    bool Int64(int64_t i) {  // cppcheck-suppress unusedFunction
+        std::string val = std::string(reinterpret_cast<const char*>(i));
         return addArgument(val);
     }
 
-    bool Uint64(uint64_t u) {
-        std::string val = std::string((const char*)u);
+    bool Uint64(uint64_t u) {  // cppcheck-suppress unusedFunction
+        std::string val = std::string(reinterpret_cast<const char*>(u));
         return addArgument(val);
     }
 
@@ -310,7 +305,6 @@ extern "C" int rj_parse_buffer(rj_parser *parser, const char *buf, unsigned int 
 
     rapidjson::StringStream ss(tmp.data());
     rapidjson::Reader reader;
-    //CppSAXHandler handler(ctx);
 
     rapidjson::ParseResult pr = reader.Parse(ss, (parser)->impl);
     if (!pr) {

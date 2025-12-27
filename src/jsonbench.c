@@ -35,7 +35,7 @@ static inline void timespec_diff(const struct timespec *a, const struct timespec
 static char available_engines[10][20] = {""};
 static int engine_count = 0;
 
-void showhelp(void) {
+static void showhelp(void) {
     printf("Use: jsonbench [OPTIONS]\n\n");
     printf("OPTIONS:\n");
     printf("\t-h\tThis help\n");
@@ -55,7 +55,7 @@ void showhelp(void) {
     printf("\n");
 }
 
-int read_file(const char *filename, char *buffer) {
+static int read_file(const char *filename, char *buffer) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         printf("Error: Unable to open file %s\n", filename);
@@ -90,7 +90,7 @@ int main(int argc, char ** argv) {
     extern char   *optarg;
     extern int     optind, opterr, optopt;
 
-    char          *error_msg; // cppcheck-suppress unusedVariable
+    char          *error_msg;
     unsigned int   length = 0;
     char           data[FILE_BUFFER_SIZE];  // 100M fixed length
     const char    *jsonfile = NULL;
@@ -118,9 +118,13 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
                 return 0;
             case 'e':
                 jsonengine    = strdup(optarg);
+                if (jsonengine == NULL) {
+                    fprintf(stderr, "Memory allocation error\n");
+                    return EXIT_FAILURE;
+                }
                 int i = 0;
-                for(int i = 0; i < engine_count; i++) {
-                    if (strcmp(jsonengine, available_engines[i]) == 0) {
+                for(int e = 0; e < engine_count; e++) {
+                    if (strcmp(jsonengine, available_engines[e]) == 0) {
                         break;
                     }
                 }
@@ -207,7 +211,6 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
         if (strcmp(jsonengine, "RAPIDJSON") == 0) {
 
             rj_parser *json = NULL;
-            char * error_msg = NULL;
             rj_json_init(&json, &error_msg);
             if (json == NULL) {
                 fprintf(stderr, "Failed to initialize JSON parser\n");
@@ -219,7 +222,7 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
             rj_set_silence(json, silence);
 
             clock_gettime(CLOCK_REALTIME, &ts_before);
-            int rc = rj_parse_buffer(json, data, length, &error_msg);
+            rc = rj_parse_buffer(json, data, length, &error_msg);
             if (rc != 0) {
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
@@ -241,7 +244,6 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
         if (strcmp(jsonengine, "NLOHMANNJSON") == 0) {
 
             nl_parser *json = NULL;
-            char * error_msg = NULL;
             nl_json_init(&json, &error_msg);
             if (json == NULL) {
                 fprintf(stderr, "Failed to initialize JSON parser\n");
@@ -253,7 +255,7 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
             nl_set_silence(json, silence);
 
             clock_gettime(CLOCK_REALTIME, &ts_before);
-            int rc = nl_parse_buffer(json, data, length, &error_msg);
+            rc = nl_parse_buffer(json, data, length, &error_msg);
             if (rc != 0) {
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);

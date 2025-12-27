@@ -13,9 +13,9 @@
 using nljson = nlohmann::json;
 
 class NLSAXHandler : public nlohmann::json_sax<nlohmann::json>{
-    void *ctx;  // contect from C
-public:
+  public:
     explicit NLSAXHandler():
+    m_max_depth(0),
     m_current_depth(0),
     m_depth_limit_exceeded(false),
     m_current_key(JSON_STRING_SIZE, '\0'),
@@ -105,7 +105,7 @@ public:
     bool end_object() noexcept override {
         size_t separator = static_cast<size_t>(m_prefix_len);
         for(int i = static_cast<int>(m_prefix_len) - 1; i >= 0; i--) {
-            if (m_prefix[i] == '.') {
+            if (m_prefix[i] == '.') {  // cppcheck-suppress useStlAlgorithm
                 separator = static_cast<size_t>(i);
                 break;
             }
@@ -132,23 +132,19 @@ public:
         (void)elements;
         if (m_prefix_len == 0 && m_current_key_len == 0) {
             m_prefix = "array";
-            m_prefix_len = 5;
-            m_prefix[m_prefix_len] = '\0';
+            m_prefix_len = m_prefix.size();
             m_current_key = "array";
-            m_current_key_len = 5;
-            m_current_key[m_current_key_len] = '\0';
+            m_current_key_len = m_current_key.size();
         }
         else if (m_prefix_len > 0) {
             m_prefix.replace(m_prefix_len, 1, ".");
             m_prefix_len += 1;
             m_prefix.replace(m_prefix_len, m_current_key_len, m_current_key);
             m_prefix_len += m_current_key_len;
-            m_prefix[m_prefix_len] = '\0';
         }
         else {
             m_prefix.replace(0, m_current_key_len, m_current_key);
             m_prefix_len += m_current_key_len;
-            m_prefix[m_prefix_len] = '\0';
         }
         m_current_depth++;
         if (m_current_depth > m_max_depth) {
@@ -161,7 +157,7 @@ public:
     bool end_array() noexcept override {
         size_t separator = static_cast<size_t>(m_prefix_len);
         for(int i = static_cast<int>(m_prefix_len) - 1; i >= 0; i--) {
-            if (m_prefix[i] == '.') {
+            if (m_prefix[i] == '.') {  // cppcheck-suppress useStlAlgorithm
                 separator = static_cast<size_t>(i);
                 break;
             }
@@ -179,15 +175,14 @@ public:
     }
 
     bool key(nljson::string_t& val) override {
-        m_current_key.replace(0, val.size(), std::string((const char*)val.c_str(), val.size()));
+        m_current_key.replace(0, val.size(), std::string(reinterpret_cast<const char*>(val.c_str()), val.size()));
         m_current_key_len = val.size();
         m_current_key[m_current_key_len] = '\0';
-        return true;
         return true;
     }
 
     bool string(nljson::string_t& v) override {
-        std::string val = std::string((const char*)v.c_str(), v.size());
+        std::string val = std::string(reinterpret_cast<const char*>(v.c_str()), v.size());
         return addArgument(val);
     }
 

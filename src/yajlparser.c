@@ -13,6 +13,12 @@ static int json_add_argument(yajl_json_data *p, const unsigned char *value, unsi
 {
     assert(p != NULL);
 
+    p->current_arg_num++;
+    if (p->current_arg_num > p->arg_num_limit) {
+        p->arg_num_limit_exceeded = 1;
+        return 0;
+    }
+
     if (p->silence) {
         return 1;
     }
@@ -48,11 +54,6 @@ static int json_add_argument(yajl_json_data *p, const unsigned char *value, unsi
     memcpy(argval, value, length);
     argval[length] = '\0';
     printf("%s: %s\n", argname, argval);
-    p->current_arg_num++;
-    if (p->current_arg_num > p->arg_num_limit) {
-        p->arg_num_limit_exceeded = 1;
-        return 0;
-    }
 
     return 1;
 }

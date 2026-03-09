@@ -5,8 +5,11 @@
 #include <vector>
 #include <deque>
 #include <string>
+#include <string_view>
 
 #ifdef HAVE_NLOHMANNJSON
+
+#include "pathhandler.h"
 
 #include "nlohmann/json.hpp"
 
@@ -18,14 +21,11 @@ class NLSAXHandler : public nlohmann::json_sax<nlohmann::json>{
     m_max_depth(0),
     m_current_depth(0),
     m_depth_limit_exceeded(false),
-    m_current_key(JSON_STRING_SIZE, '\0'),
-    m_current_key_len(0),
-    m_prefix(JSON_STRING_SIZE, '\0'),
-    m_prefix_len(0),
     m_arg_num_counter(0),
     m_arg_num_limit(0),
     m_arg_num_limit_exceeded(false),
-    m_silence(false)
+    m_silence(false),
+    m_path()
     {};
     ~NLSAXHandler() {};
 
@@ -33,43 +33,7 @@ class NLSAXHandler : public nlohmann::json_sax<nlohmann::json>{
         return true;
     }
 
-    bool addArgument(const std::string& value) {
-        if (m_silence) {
-            return true;
-        }
-
-        std::string argname(JSON_STRING_SIZE, '\0');
-        std::string argval(JSON_STRING_SIZE, '\0');
-        /*
-         * Argument name is 'm_prefix + m_current_key'
-         */
-        if(m_prefix_len > 0) {
-            if (m_prefix_len + 1 + m_current_key_len >= JSON_STRING_SIZE) {
-                std::cerr << "Argument name too long" << std::endl;
-                return false;
-            }
-            argname.replace(0, m_prefix_len, m_prefix.substr(0, m_prefix_len));
-            argname.replace(m_prefix_len, 1, ".");
-            argname.replace(m_prefix_len + 1, m_current_key_len,
-                m_current_key.substr(0, m_current_key_len));
-            argname.resize(m_prefix_len + 1 + m_current_key_len);
-        }
-        else {
-            if (m_current_key_len >= JSON_STRING_SIZE) {
-                std::cerr << "Argument name too long" << std::endl;
-                return false;
-            }
-            argname.replace(0, m_current_key_len,
-                m_current_key.substr(0, m_current_key_len));
-            argname.resize(m_current_key_len);
-        }
-        if (value.size() >= JSON_STRING_SIZE) {
-            std::cerr << "Argument value too long" << std::endl;
-            return false;
-        }
-        argval.replace(0, value.size(), value);
-        argval.resize(value.size());
-        std::cout << argname << ": " << argval << std::endl;
+    bool addArgument(std::string_view value) {
         m_arg_num_counter++;
         if (m_arg_num_limit > 0 &&
             m_arg_num_counter > m_arg_num_limit) {
@@ -77,22 +41,34 @@ class NLSAXHandler : public nlohmann::json_sax<nlohmann::json>{
             std::cerr << "Argument number limit exceeded" << std::endl;
             return false;
         }
+
+        if (m_silence) {
+            return true;
+        }
+
+        char argname[JSON_STRING_SIZE];
+        /*
+         * Argument name is 'm_prefix + m_current_key'
+         */
+        m_path.buildArgName(argname);
+        if (m_path.m_error) {
+            std::cerr << "Argument name too long" << std::endl;
+            return false;
+        }
+        if (value.size() >= JSON_STRING_SIZE) {
+            std::cerr << "Argument value too long" << std::endl;
+            return false;
+        }
+        std::cout << argname << ": " << value << std::endl;
         return true;
     }
 
     /* NlohmannJSON mandatory methods */
     bool start_object(std::size_t elements) noexcept override {
-        (void)elements;
-        if (m_prefix_len == 0) {
-            m_prefix = m_current_key;
-            m_prefix_len = m_current_key_len;
-        }
-        else {
-            m_prefix.replace(m_prefix_len, 1, ".");
-            m_prefix_len += 1;
-            m_prefix.replace(m_prefix_len, m_current_key_len, m_current_key);
-            m_prefix_len += m_current_key_len;
-            m_prefix[m_prefix_len] = '\0';
+        m_path.push();
+        if (m_path.m_error) {
+            std::cerr << "Argument name too long" << std::endl;
+            return false;
         }
         m_current_depth++;
         if (m_current_depth > m_max_depth) {
@@ -103,48 +79,17 @@ class NLSAXHandler : public nlohmann::json_sax<nlohmann::json>{
     }
 
     bool end_object() noexcept override {
-        size_t separator = static_cast<size_t>(m_prefix_len);
-        for(int i = static_cast<int>(m_prefix_len) - 1; i >= 0; i--) {
-            if (m_prefix[i] == '.') {  // cppcheck-suppress useStlAlgorithm
-                separator = static_cast<size_t>(i);
-                break;
-            }
-        }
-        if (separator < m_prefix_len) {
-            m_current_key.replace(0, m_prefix_len - separator - 1,
-                m_prefix.substr(separator + 1, m_prefix_len - separator - 1));
-            m_current_key_len = m_prefix_len - separator - 1;
-            m_prefix[separator] = '\0';
-            m_prefix_len = separator;
-        }
-        else {
-            m_current_key.replace(0, m_prefix_len, m_prefix.substr(0, m_prefix_len));
-            m_current_key_len = m_prefix_len;
-            m_prefix[0] = '\0';
-            m_prefix_len = 0;
-        }
+        m_path.pop();
         m_current_depth--;
 
         return true;
     }
 
     bool start_array(std::size_t elements) noexcept override {
-        (void)elements;
-        if (m_prefix_len == 0 && m_current_key_len == 0) {
-            m_prefix = "array";
-            m_prefix_len = m_prefix.size();
-            m_current_key = "array";
-            m_current_key_len = m_current_key.size();
-        }
-        else if (m_prefix_len > 0) {
-            m_prefix.replace(m_prefix_len, 1, ".");
-            m_prefix_len += 1;
-            m_prefix.replace(m_prefix_len, m_current_key_len, m_current_key);
-            m_prefix_len += m_current_key_len;
-        }
-        else {
-            m_prefix.replace(0, m_current_key_len, m_current_key);
-            m_prefix_len += m_current_key_len;
+        m_path.startArraySpecial();
+        if (m_path.m_error) {
+            std::cerr << "Argument name too long" << std::endl;
+            return false;
         }
         m_current_depth++;
         if (m_current_depth > m_max_depth) {
@@ -155,63 +100,50 @@ class NLSAXHandler : public nlohmann::json_sax<nlohmann::json>{
     }
 
     bool end_array() noexcept override {
-        size_t separator = static_cast<size_t>(m_prefix_len);
-        for(int i = static_cast<int>(m_prefix_len) - 1; i >= 0; i--) {
-            if (m_prefix[i] == '.') {  // cppcheck-suppress useStlAlgorithm
-                separator = static_cast<size_t>(i);
-                break;
-            }
-        }
-        if (separator < m_prefix_len) {
-            m_prefix[separator] = '\0';
-            m_prefix_len = separator;
-        }
-        else {
-            m_prefix[0] = '\0';
-            m_prefix_len = 0;
-        }
+        m_path.pop();
         m_current_depth--;
         return true;
     }
 
     bool key(nljson::string_t& val) override {
-        m_current_key.replace(0, val.size(), std::string(reinterpret_cast<const char*>(val.c_str()), val.size()));
-        m_current_key_len = val.size();
-        m_current_key[m_current_key_len] = '\0';
+        m_path.setKey(val.c_str(), val.size());
+        if (m_path.m_error) {
+            std::cerr << "Argument name too long" << std::endl;
+            return false;
+        }
         return true;
     }
 
     bool string(nljson::string_t& v) override {
-        std::string val = std::string(reinterpret_cast<const char*>(v.c_str()), v.size());
-        return addArgument(val);
+        return addArgument(std::string_view(v));
     }
 
     bool number_integer(nljson::number_integer_t v) override {
         std::string val = std::to_string(v);
-        return addArgument(val);
+        return addArgument(std::string_view(val));
     }
 
     bool number_unsigned(nljson::number_unsigned_t v) override {
         std::string val = std::to_string(v);
-        return addArgument(val);
+        return addArgument(std::string_view(val));
     }
 
     bool number_float(nljson::number_float_t v, const nljson::string_t& s) override {
         (void)s;
         std::string val = std::to_string(v);
-        return addArgument(val);
+        return addArgument(std::string_view(val));
     }
 
     bool null() override {
-        addArgument("");
+        addArgument(std::string_view(""));
         return true;
     }
 
     bool boolean(bool b) override {
         if (b) {
-            addArgument("true");
+            addArgument(std::string_view("true"));
         } else {
-            addArgument("false");
+            addArgument(std::string_view("false"));
         }
         return true;
     }
@@ -248,15 +180,11 @@ class NLSAXHandler : public nlohmann::json_sax<nlohmann::json>{
     double         m_max_depth;
     int64_t        m_current_depth;
     bool           m_depth_limit_exceeded;
-    std::string    m_current_key;
-    size_t         m_current_key_len;
-    std::string    m_prefix;
-    size_t         m_prefix_len;
     long int       m_arg_num_counter;
     long int       m_arg_num_limit;
     bool           m_arg_num_limit_exceeded;
     bool           m_silence;
-
+    PathHandler    m_path;
 };
 
 struct nl_parser {

@@ -8,6 +8,8 @@
 
 #ifdef HAVE_RAPIDJSON
 
+#include "pathhandler.h"
+
 #include "rapidjson/reader.h"
 #include "rapidjson/filereadstream.h"
 #include "rapidjson/stringbuffer.h"
@@ -19,14 +21,11 @@ class RJSAXHandler {
     m_max_depth(0),
     m_current_depth(0),
     m_depth_limit_exceeded(false),
-    m_current_key(JSON_STRING_SIZE, '\0'),
-    m_current_key_len(0),
-    m_prefix(JSON_STRING_SIZE, '\0'),
-    m_prefix_len(0),
     m_arg_num_counter(0),
     m_arg_num_limit(0),
     m_arg_num_limit_exceeded(false),
-    m_silence(false)
+    m_silence(false),
+    m_path()
     {};
     ~RJSAXHandler() {};
 
@@ -35,42 +34,7 @@ class RJSAXHandler {
     }
 
     bool addArgument(const std::string& value) {
-        if (m_silence) {
-            return true;
-        }
 
-        std::string argname(JSON_STRING_SIZE, '\0');
-        std::string argval(JSON_STRING_SIZE, '\0');
-        /*
-         * Argument name is 'm_prefix + m_current_key'
-         */
-        if(m_prefix_len > 0) {
-            if (m_prefix_len + 1 + m_current_key_len >= JSON_STRING_SIZE) {
-                std::cerr << "Argument name too long" << std::endl;
-                return false;
-            }
-            argname.replace(0, m_prefix_len, m_prefix.substr(0, m_prefix_len));
-            argname.replace(m_prefix_len, 1, ".");
-            argname.replace(m_prefix_len + 1, m_current_key_len,
-                m_current_key.substr(0, m_current_key_len));
-            argname.resize(m_prefix_len + 1 + m_current_key_len);
-        }
-        else {
-            if (m_current_key_len >= JSON_STRING_SIZE) {
-                std::cerr << "Argument name too long" << std::endl;
-                return false;
-            }
-            argname.replace(0, m_current_key_len,
-                m_current_key.substr(0, m_current_key_len));
-            argname.resize(m_current_key_len);
-        }
-        if (value.size() >= JSON_STRING_SIZE) {
-            std::cerr << "Argument value too long" << std::endl;
-            return false;
-        }
-        argval.replace(0, value.size(), value);
-        argval.resize(value.size());
-        std::cout << argname << ": " << argval << std::endl;
         m_arg_num_counter++;
         if (m_arg_num_limit > 0 &&
             m_arg_num_counter > m_arg_num_limit) {
@@ -78,21 +42,33 @@ class RJSAXHandler {
             std::cerr << "Argument number limit exceeded" << std::endl;
             return false;
         }
+
+        if (m_silence) {
+            return true;
+        }
+        /*
+         * Argument name is 'm_prefix + m_current_key'
+         */
+        char argname[JSON_STRING_SIZE];
+        m_path.buildArgName(argname);
+        if (m_path.m_error) {
+            std::cerr << "Argument name too long" << std::endl;
+            return false;
+        }
+        if (value.size() >= JSON_STRING_SIZE) {
+            std::cerr << "Argument value too long" << std::endl;
+            return false;
+        }
+        std::cout << argname << ": " << value << std::endl;
         return true;
     }
 
     /* RapidJSON mandatory methods */
     bool StartObject() {  // cppcheck-suppress unusedFunction
-        if (m_prefix_len == 0) {
-            m_prefix = m_current_key;
-            m_prefix_len = m_current_key_len;
-        }
-        else {
-            m_prefix.replace(m_prefix_len, 1, ".");
-            m_prefix_len += 1;
-            m_prefix.replace(m_prefix_len, m_current_key_len, m_current_key);
-            m_prefix_len += m_current_key_len;
-            m_prefix[m_prefix_len] = '\0';
+        m_path.push();
+        if (m_path.m_error) {
+            std::cerr << "Argument name too long" << std::endl;
+            return false;
         }
         m_current_depth++;
         if (m_current_depth > m_max_depth) {
@@ -103,51 +79,16 @@ class RJSAXHandler {
     }
 
     bool EndObject(rapidjson::SizeType) {   // cppcheck-suppress unusedFunction
-
-        size_t separator = static_cast<size_t>(m_prefix_len);
-        for(int i = static_cast<int>(m_prefix_len) - 1; i >= 0; i--) {
-            if (m_prefix[i] == '.') {  // cppcheck-suppress useStlAlgorithm
-                separator = static_cast<size_t>(i);
-                break;
-            }
-        }
-
-        if (separator < m_prefix_len) {
-            m_current_key.replace(0, m_prefix_len - separator - 1,
-                m_prefix.substr(separator + 1, m_prefix_len - separator - 1));
-            m_current_key_len = m_prefix_len - separator - 1;
-            m_prefix[separator] = '\0';
-            m_prefix_len = separator;
-        }
-        else {
-            m_current_key.replace(0, m_prefix_len, m_prefix.substr(0, m_prefix_len));
-            m_current_key_len = m_prefix_len;
-            m_prefix[0] = '\0';
-            m_prefix_len = 0;
-        }
+        m_path.pop();
         m_current_depth--;
-
         return true;
     }
 
     bool StartArray() {  // cppcheck-suppress unusedFunction
-        if (m_prefix_len == 0 && m_current_key_len == 0) {
-            m_prefix = "array";
-            m_prefix_len = m_prefix.size();
-            m_current_key = "array";
-            m_current_key_len = m_current_key.size();
-        }
-        else if (m_prefix_len > 0) {
-            m_prefix.replace(m_prefix_len, 1, ".");
-            m_prefix_len += 1;
-            m_prefix.replace(m_prefix_len, m_current_key_len, m_current_key);
-            m_prefix_len += m_current_key_len;
-            m_prefix[m_prefix_len] = '\0';
-        }
-        else {
-            m_prefix.replace(0, m_current_key_len, m_current_key);
-            m_prefix_len += m_current_key_len;
-            m_prefix[m_prefix_len] = '\0';
+        m_path.startArraySpecial();
+        if (m_path.m_error) {
+            std::cerr << "Argument name too long" << std::endl;
+            return false;
         }
         m_current_depth++;
         if (m_current_depth > m_max_depth) {
@@ -158,29 +99,17 @@ class RJSAXHandler {
     }
 
     bool EndArray(rapidjson::SizeType) {   // cppcheck-suppress unusedFunction
-        size_t separator = static_cast<size_t>(m_prefix_len);
-        for(int i = static_cast<int>(m_prefix_len) - 1; i >= 0; i--) {
-            if (m_prefix[i] == '.') { // cppcheck-suppress useStlAlgorithm
-                separator = static_cast<size_t>(i);
-                break;
-            }
-        }
-        if (separator < m_prefix_len) {
-            m_prefix[separator] = '\0';
-            m_prefix_len = separator;
-        }
-        else {
-            m_prefix[0] = '\0';
-            m_prefix_len = 0;
-        }
+        m_path.pop();
         m_current_depth--;
         return true;
     }
 
     bool Key(const char* k, size_t l, bool) {  // cppcheck-suppress unusedFunction
-        m_current_key.replace(0, l, std::string(reinterpret_cast<const char*>(k), l));
-        m_current_key_len = l;
-        m_current_key[m_current_key_len] = '\0';
+        m_path.setKey(k, l);
+        if (m_path.m_error) {
+            std::cerr << "Argument name too long" << std::endl;
+            return false;
+        }
         return true;
     }
 
@@ -255,14 +184,11 @@ class RJSAXHandler {
     double         m_max_depth;
     int64_t        m_current_depth;
     bool           m_depth_limit_exceeded;
-    std::string    m_current_key;
-    size_t         m_current_key_len;
-    std::string    m_prefix;
-    size_t         m_prefix_len;
     long int       m_arg_num_counter;
     long int       m_arg_num_limit;
     bool           m_arg_num_limit_exceeded;
     bool           m_silence;
+    PathHandler    m_path;
 
 };
 

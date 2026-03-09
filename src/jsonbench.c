@@ -11,7 +11,7 @@
 #include <time.h>
 
 #ifndef FILE_BUFFER_SIZE
-#define FILE_BUFFER_SIZE 524288
+#define FILE_BUFFER_SIZE 10485760
 #endif
 
 #ifndef LIMIT_ARG_NUM
@@ -76,7 +76,7 @@ static int read_file(const char *filename, char *buffer) {
     fclose(file);
 
     if (i == FILE_BUFFER_SIZE && ci != EOF) {
-        printf("File too long: %s\n", filename);
+        printf("File too long: %s (max allowed: %d)\n", filename, FILE_BUFFER_SIZE);
         return -1 * EXIT_FAILURE;
     }
 
@@ -136,15 +136,15 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
                 break;
             case 'a':
                 arg_limit     = atoi(optarg);
-                if (arg_limit == 0 || arg_limit > UINT_MAX) {
-                    fprintf(stderr, "Ohh... Try to pass for '-m' an integer between 0 and %u\n", (unsigned int)UINT_MAX);
+                if (arg_limit == 0 || arg_limit > (unsigned int)UINT_MAX) {
+                    fprintf(stderr, "Ohh... Try to pass for '-a' an integer between 0 and %u\n", (unsigned int)UINT_MAX);
                     return EXIT_FAILURE;
                 }
                 break;
             case 'd':
                 depth_limit    = atoi(optarg);
-                if (depth_limit == 0 || depth_limit > UINT_MAX) {
-                    fprintf(stderr, "Ohh... Try to pass for '-m' an integer between 0 and %u\n", (unsigned int)UINT_MAX);
+                if (depth_limit == 0 || depth_limit > (unsigned int)UINT_MAX) {
+                    fprintf(stderr, "Ohh... Try to pass for '-a' an integer between 0 and %u\n", (unsigned int)UINT_MAX);
                     return EXIT_FAILURE;
                 }
                 break;
@@ -203,7 +203,7 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
                 ts_diff.tv_nsec = 0;
                 timespec_diff(&ts_after, &ts_before, &ts_diff);
                 yajl_json_cleanup(json);
-                printf("\nTime: %ld.%09ld usec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+                printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
             }
         }
 #endif
@@ -235,7 +235,7 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
                 ts_diff.tv_nsec = 0;
                 timespec_diff(&ts_after, &ts_before, &ts_diff);
                 rj_json_cleanup(json);
-                printf("\nTime: %ld.%09ld usec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+                printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
             }
 
         }
@@ -268,7 +268,7 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
                 ts_diff.tv_nsec = 0;
                 timespec_diff(&ts_after, &ts_before, &ts_diff);
                 nl_json_cleanup(json);
-                printf("\nTime: %ld.%09ld usec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+                printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
             }
 
         }

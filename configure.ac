@@ -16,6 +16,19 @@ PKGPATH=$($PKG_CONFIG --variable pc_path pkg-config)
 AC_PROG_CXX
 AC_PROG_CC
 
+JSONC_CFLAGS=""
+JSONC_LDADD=""
+JSONC_LDFLAGS=""
+JANSSON_CFLAGS=""
+JANSSON_LDADD=""
+JANSSON_LDFLAGS=""
+CJSON_CFLAGS=""
+CJSON_LDADD=""
+CJSON_LDFLAGS=""
+JSONCPP_CFLAGS=""
+JSONCPP_LDADD=""
+JSONCPP_LDFLAGS=""
+
 # Verbose output
 AC_ARG_ENABLE(verbose-output,
     AS_HELP_STRING([--enable-verbose-output],
@@ -164,6 +177,147 @@ fi
 AM_CONDITIONAL([HAVE_NLOHMANNJSON], [test "x$enable_nlohmannjson" = "xyes"])
 #dnl End check for nlohmannjson
 
+dnl Check if we want to use json-c or not
+AC_MSG_CHECKING([whether to use json-c])
+AC_ARG_WITH(
+    [jsonc],
+    [AS_HELP_STRING([--with-jsonc], [Enable json-c (default is enabled if exists)])],
+    [case "$withval" in
+        yes) wantjsonc=yes ;;
+        no)  wantjsonc=no; AC_DEFINE([HAVE_JSONC], [0], [Mark that user does not want json-c]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+    esac],
+    [wantjsonc="notset"]
+)
+
+if test "$wantjsonc" != "no"; then
+    PKG_CHECK_MODULES([JSONC], [json-c], [
+        JSONC_CFLAGS="$JSONC_CFLAGS"
+        JSONC_LDADD="$JSONC_LIBS"
+        AC_DEFINE([HAVE_JSONC], [1], [Mark that system has json-c])
+    ], [
+        AC_MSG_ERROR([json-c was requested but not found via pkg-config. Install json-c or disable with --with-jsonc=no])
+    ])
+fi
+
+dnl Check if we want to use jansson or not
+AC_MSG_CHECKING([whether to use jansson])
+AC_ARG_WITH(
+    [jansson],
+    [AS_HELP_STRING([--with-jansson], [Enable jansson (default is enabled if exists)])],
+    [case "$withval" in
+        yes) wantjansson=yes ;;
+        no)  wantjansson=no; AC_DEFINE([HAVE_JANSSON], [0], [Mark that user does not want jansson]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+    esac],
+    [wantjansson="notset"]
+)
+
+if test "$wantjansson" != "no"; then
+    PKG_CHECK_MODULES([JANSSON], [jansson], [
+        JANSSON_CFLAGS="$JANSSON_CFLAGS"
+        JANSSON_LDADD="$JANSSON_LIBS"
+        AC_DEFINE([HAVE_JANSSON], [1], [Mark that system has jansson])
+    ], [
+        AC_MSG_ERROR([jansson was requested but not found via pkg-config. Install jansson or disable with --with-jansson=no])
+    ])
+fi
+
+dnl Check if we want to use cJSON or not
+AC_MSG_CHECKING([whether to use cJSON])
+AC_ARG_WITH(
+    [cjson],
+    [AS_HELP_STRING([--with-cjson], [Enable cJSON (default is enabled if exists)])],
+    [case "$withval" in
+        yes) wantcjson=yes ;;
+        no)  wantcjson=no; AC_DEFINE([HAVE_CJSON], [0], [Mark that user does not want cJSON]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+    esac],
+    [wantcjson="notset"]
+)
+
+if test "$wantcjson" != "no"; then
+    PKG_CHECK_MODULES([CJSON], [libcjson], [
+        CJSON_CFLAGS="$CJSON_CFLAGS"
+        CJSON_LDADD="$CJSON_LIBS"
+        AC_DEFINE([HAVE_CJSON], [1], [Mark that system has cJSON])
+    ], [
+        AC_MSG_ERROR([cJSON was requested but not found via pkg-config as libcjson. Install libcjson or disable with --with-cjson=no])
+    ])
+fi
+
+dnl Check if we want to use jsoncpp or not
+AC_MSG_CHECKING([whether to use jsoncpp])
+AC_ARG_WITH(
+    [jsoncpp],
+    [AS_HELP_STRING([--with-jsoncpp], [Enable jsoncpp (default is enabled if exists)])],
+    [case "$withval" in
+        yes) wantjsoncpp=yes ;;
+        no)  wantjsoncpp=no; AC_DEFINE([HAVE_JSONCPP], [0], [Mark that user does not want JsonCpp]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+    esac],
+    [wantjsoncpp="notset"]
+)
+
+if test "$wantjsoncpp" != "no"; then
+    PKG_CHECK_MODULES([JSONCPP], [jsoncpp], [
+        JSONCPP_CFLAGS="$JSONCPP_CFLAGS"
+        JSONCPP_LDADD="$JSONCPP_LIBS"
+        AC_DEFINE([HAVE_JSONCPP], [1], [Mark that system has JsonCpp])
+    ], [
+        AC_LANG_PUSH([C++])
+        AC_CHECK_HEADERS([json/json.h], [],
+            [AC_MSG_ERROR([json/json.h not found for JsonCpp. Install jsoncpp development headers or disable with --with-jsoncpp=no])]
+        )
+        old_LIBS="$LIBS"
+        LIBS="$LIBS -ljsoncpp"
+        AC_LINK_IFELSE(
+            [AC_LANG_PROGRAM([[#include <json/json.h>]], [[Json::Value root; return root.isNull() ? 0 : 1;]])],
+            [
+                JSONCPP_LDADD="-ljsoncpp"
+                AC_DEFINE([HAVE_JSONCPP], [1], [Mark that system has JsonCpp])
+            ],
+            [AC_MSG_ERROR([JsonCpp library not found. Install libjsoncpp or disable with --with-jsoncpp=no])]
+        )
+        LIBS="$old_LIBS"
+        AC_LANG_POP([C++])
+    ])
+fi
+
+dnl Check if we want to use jsoncons or not
+AC_MSG_CHECKING([whether to use jsoncons])
+AC_ARG_WITH(
+    [jsoncons],
+    [AS_HELP_STRING([--with-jsoncons], [Enable jsoncons (default is enabled if exists)])],
+    [case "$withval" in
+        yes) wantjsoncons=yes ;;
+        no)  wantjsoncons=no; AC_DEFINE([HAVE_JSONCONS], [0], [Mark that user does not want jsoncons]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+    esac],
+    [wantjsoncons="notset"]
+)
+
+if test "$wantjsoncons" != "no"; then
+    AC_LANG_PUSH([C++])
+    AC_CHECK_HEADERS([jsoncons/json.hpp], [],
+        [AC_MSG_ERROR([jsoncons/json.hpp not found. Install jsoncons headers or disable with --with-jsoncons=no])]
+    )
+    AC_LANG_POP([C++])
+    AC_DEFINE([HAVE_JSONCONS], [1], [Mark that system has jsoncons])
+fi
+
+AC_SUBST(JSONC_CFLAGS)
+AC_SUBST(JSONC_LDADD)
+AC_SUBST(JSONC_LDFLAGS)
+AC_SUBST(JANSSON_CFLAGS)
+AC_SUBST(JANSSON_LDADD)
+AC_SUBST(JANSSON_LDFLAGS)
+AC_SUBST(CJSON_CFLAGS)
+AC_SUBST(CJSON_LDADD)
+AC_SUBST(CJSON_LDFLAGS)
+AC_SUBST(JSONCPP_CFLAGS)
+AC_SUBST(JSONCPP_LDADD)
+AC_SUBST(JSONCPP_LDFLAGS)
 
 AC_ARG_WITH(
     [file-buffer-size],

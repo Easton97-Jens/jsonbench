@@ -28,6 +28,13 @@ CJSON_LDFLAGS=""
 JSONCPP_CFLAGS=""
 JSONCPP_LDADD=""
 JSONCPP_LDFLAGS=""
+SIMDJSON_CFLAGS=""
+SIMDJSON_LDADD=""
+SIMDJSON_LDFLAGS=""
+YYJSON_CFLAGS=""
+YYJSON_LDADD=""
+YYJSON_LDFLAGS=""
+GLAZE_CFLAGS=""
 
 # Verbose output
 AC_ARG_ENABLE(verbose-output,
@@ -292,6 +299,91 @@ if test "$wantjsoncpp" != "no"; then
     ])
 fi
 
+
+
+dnl Check if we want to use simdjson or not
+AC_MSG_CHECKING([whether to use simdjson])
+AC_ARG_WITH(
+    [simdjson],
+    [AS_HELP_STRING([--with-simdjson], [Enable simdjson (default is enabled if exists)])],
+    [case "$withval" in
+        yes) wantsimdjson=yes ;;
+        no)  wantsimdjson=no; AC_DEFINE([HAVE_SIMDJSON], [0], [Mark that user does not want simdjson]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+    esac],
+    [wantsimdjson="notset"]
+)
+
+if test "$wantsimdjson" != "no"; then
+    PKG_CHECK_MODULES([SIMDJSON], [simdjson], [
+        SIMDJSON_CFLAGS="$SIMDJSON_CFLAGS"
+        SIMDJSON_LDADD="$SIMDJSON_LIBS"
+        AC_DEFINE([HAVE_SIMDJSON], [1], [Mark that system has simdjson])
+    ], [
+        AC_LANG_PUSH([C++])
+        AC_CHECK_HEADERS([simdjson.h], [],
+            [AC_MSG_ERROR([simdjson.h not found. Install simdjson headers or disable with --with-simdjson=no])]
+        )
+        old_LIBS="$LIBS"
+        LIBS="$LIBS -lsimdjson"
+        AC_LINK_IFELSE(
+            [AC_LANG_PROGRAM([[#include <simdjson.h>]], [[simdjson::ondemand::parser parser; return 0;]])],
+            [
+                SIMDJSON_LDADD="-lsimdjson"
+                AC_DEFINE([HAVE_SIMDJSON], [1], [Mark that system has simdjson])
+            ],
+            [AC_MSG_ERROR([simdjson library not found. Install libsimdjson or disable with --with-simdjson=no])]
+        )
+        LIBS="$old_LIBS"
+        AC_LANG_POP([C++])
+    ])
+fi
+
+dnl Check if we want to use yyjson or not
+AC_MSG_CHECKING([whether to use yyjson])
+AC_ARG_WITH(
+    [yyjson],
+    [AS_HELP_STRING([--with-yyjson], [Enable yyjson (default is enabled if exists)])],
+    [case "$withval" in
+        yes) wantyyjson=yes ;;
+        no)  wantyyjson=no; AC_DEFINE([HAVE_YYJSON], [0], [Mark that user does not want yyjson]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+    esac],
+    [wantyyjson="notset"]
+)
+
+if test "$wantyyjson" != "no"; then
+    PKG_CHECK_MODULES([YYJSON], [yyjson], [
+        YYJSON_CFLAGS="$YYJSON_CFLAGS"
+        YYJSON_LDADD="$YYJSON_LIBS"
+        AC_DEFINE([HAVE_YYJSON], [1], [Mark that system has yyjson])
+    ], [
+        AC_MSG_ERROR([yyjson was requested but not found via pkg-config. Install yyjson or disable with --with-yyjson=no])
+    ])
+fi
+
+dnl Check if we want to use glaze or not
+AC_MSG_CHECKING([whether to use glaze])
+AC_ARG_WITH(
+    [glaze],
+    [AS_HELP_STRING([--with-glaze], [Enable glaze (default is enabled if exists)])],
+    [case "$withval" in
+        yes) wantglaze=yes ;;
+        no)  wantglaze=no; AC_DEFINE([HAVE_GLAZE], [0], [Mark that user does not want glaze]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+    esac],
+    [wantglaze="notset"]
+)
+
+if test "$wantglaze" != "no"; then
+    AC_LANG_PUSH([C++])
+    AC_CHECK_HEADERS([glaze/glaze.hpp], [],
+        [AC_MSG_ERROR([glaze/glaze.hpp not found. Install glaze headers or disable with --with-glaze=no])]
+    )
+    AC_LANG_POP([C++])
+    AC_DEFINE([HAVE_GLAZE], [1], [Mark that system has glaze])
+fi
+
 dnl Check if we want to use jsoncons or not
 AC_MSG_CHECKING([whether to use jsoncons])
 AC_ARG_WITH(
@@ -326,6 +418,13 @@ AC_SUBST(CJSON_LDFLAGS)
 AC_SUBST(JSONCPP_CFLAGS)
 AC_SUBST(JSONCPP_LDADD)
 AC_SUBST(JSONCPP_LDFLAGS)
+AC_SUBST(SIMDJSON_CFLAGS)
+AC_SUBST(SIMDJSON_LDADD)
+AC_SUBST(SIMDJSON_LDFLAGS)
+AC_SUBST(YYJSON_CFLAGS)
+AC_SUBST(YYJSON_LDADD)
+AC_SUBST(YYJSON_LDFLAGS)
+AC_SUBST(GLAZE_CFLAGS)
 
 AC_ARG_WITH(
     [file-buffer-size],

@@ -377,8 +377,14 @@ AC_ARG_WITH(
 
 if test "$wantglaze" != "no"; then
     AC_LANG_PUSH([C++])
-    AC_CHECK_HEADERS([glaze/glaze.hpp], [],
-        [AC_MSG_ERROR([glaze/glaze.hpp not found. Install glaze headers or disable with --with-glaze=no])]
+    AC_MSG_CHECKING([for usable glaze/glaze.hpp with C++ compiler])
+    AC_COMPILE_IFELSE(
+        [AC_LANG_PROGRAM([[#include <glaze/glaze.hpp>]], [[return 0;]])],
+        [AC_MSG_RESULT([yes])],
+        [
+            AC_MSG_RESULT([no])
+            AC_MSG_ERROR([glaze/glaze.hpp not found or not compilable with C++. Install glaze headers or disable with --with-glaze=no])
+        ]
     )
     AC_LANG_POP([C++])
     AC_DEFINE([HAVE_GLAZE], [1], [Mark that system has glaze])

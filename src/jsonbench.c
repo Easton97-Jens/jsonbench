@@ -3,6 +3,11 @@
 #include "yajlparser.h"
 #include "rjparser.h"
 #include "nlparser.h"
+#include "jsoncparser.h"
+#include "janssonparser.h"
+#include "cjsonparser.h"
+#include "jsoncppparser.h"
+#include "jsonconsparser.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,7 +37,7 @@ static inline void timespec_diff(const struct timespec *a, const struct timespec
     }
 }
 
-static char available_engines[10][20] = {""};
+static char available_engines[16][20] = {""};
 static int engine_count = 0;
 
 static void showhelp(void) {
@@ -99,16 +104,31 @@ int main(int argc, char ** argv) {
     int            silence = 0;
     struct timespec ts_before, ts_after, ts_diff;
 
-#ifdef HAVE_YAJL
+#if HAVE_YAJL
 strcpy(available_engines[engine_count++], "YAJL");
 #endif
 
-#ifdef HAVE_RAPIDJSON
+#if HAVE_RAPIDJSON
 strcpy(available_engines[engine_count++], "RAPIDJSON");
 #endif
 
-#ifdef HAVE_NLOHMANNJSON
+#if HAVE_NLOHMANNJSON
 strcpy(available_engines[engine_count++], "NLOHMANNJSON");
+#endif
+#if HAVE_JSONC
+strcpy(available_engines[engine_count++], "JSONC");
+#endif
+#if HAVE_JANSSON
+strcpy(available_engines[engine_count++], "JANSSON");
+#endif
+#if HAVE_CJSON
+strcpy(available_engines[engine_count++], "CJSON");
+#endif
+#if HAVE_JSONCPP
+strcpy(available_engines[engine_count++], "JSONCPP");
+#endif
+#if HAVE_JSONCONS
+strcpy(available_engines[engine_count++], "JSONCONS");
 #endif
 
     while ((c = getopt(argc, argv, "he:a:d:s")) != -1) {
@@ -122,9 +142,10 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
                     fprintf(stderr, "Memory allocation error\n");
                     return EXIT_FAILURE;
                 }
-                int i = 0;
+                int i = engine_count;
                 for(int e = 0; e < engine_count; e++) {
                     if (strcmp(jsonengine, available_engines[e]) == 0) {
+                        i = e;
                         break;
                     }
                 }
@@ -170,17 +191,47 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
             return EXIT_FAILURE;
         }
 
-        int rc = read_file(jsonfile, data);
-        if (rc == 0) {
-            printf("Zero character read from file\n");
-            return EXIT_FAILURE;
+        int file_based_parser = 0;
+#if HAVE_JSONC
+        if (strcmp(jsonengine, "JSONC") == 0) {
+            file_based_parser = 1;
         }
-        else if (rc < 0) {
-            printf("Error reading file\n");
-            return EXIT_FAILURE;
+#endif
+#if HAVE_JANSSON
+        if (strcmp(jsonengine, "JANSSON") == 0) {
+            file_based_parser = 1;
         }
-        else {
-            length = rc;
+#endif
+#if HAVE_CJSON
+        if (strcmp(jsonengine, "CJSON") == 0) {
+            file_based_parser = 1;
+        }
+#endif
+#if HAVE_JSONCPP
+        if (strcmp(jsonengine, "JSONCPP") == 0) {
+            file_based_parser = 1;
+        }
+#endif
+#if HAVE_JSONCONS
+        if (strcmp(jsonengine, "JSONCONS") == 0) {
+            file_based_parser = 1;
+        }
+#endif
+
+        int rc = 0;
+        if (!file_based_parser) {
+            rc = read_file(jsonfile, data);
+            if (rc == 0) {
+                printf("Zero character read from file\n");
+                return EXIT_FAILURE;
+            }
+            else if (rc < 0) {
+                printf("Error reading file\n");
+                return EXIT_FAILURE;
+            }
+            else {
+                length = rc;
+            }
         }
 #if HAVE_YAJL
         if (strcmp(jsonengine, "YAJL") == 0) {
@@ -271,6 +322,126 @@ strcpy(available_engines[engine_count++], "NLOHMANNJSON");
                 printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
             }
 
+        }
+#endif
+#if HAVE_JSONC
+        if (strcmp(jsonengine, "JSONC") == 0) {
+            jsonc_parser *json = NULL;
+            jsonc_json_init(&json, &error_msg);
+            jsonc_set_max_depth(json, depth_limit);
+            jsonc_set_max_arg_num(json, arg_limit);
+            jsonc_set_silence(json, silence);
+
+            clock_gettime(CLOCK_REALTIME, &ts_before);
+            rc = jsonc_parse_file(json, jsonfile, &error_msg);
+            if (rc != 0) {
+                fprintf(stderr, "Parse failed with code %d\n", rc);
+                fprintf(stderr, "Error: %s\n", error_msg);
+                free(error_msg);
+                return 3;
+            }
+            clock_gettime(CLOCK_REALTIME, &ts_after);
+            ts_diff.tv_sec  = 0;
+            ts_diff.tv_nsec = 0;
+            timespec_diff(&ts_after, &ts_before, &ts_diff);
+            jsonc_json_cleanup(json);
+            printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+        }
+#endif
+#if HAVE_JANSSON
+        if (strcmp(jsonengine, "JANSSON") == 0) {
+            jansson_parser *json = NULL;
+            jansson_json_init(&json, &error_msg);
+            jansson_set_max_depth(json, depth_limit);
+            jansson_set_max_arg_num(json, arg_limit);
+            jansson_set_silence(json, silence);
+
+            clock_gettime(CLOCK_REALTIME, &ts_before);
+            rc = jansson_parse_file(json, jsonfile, &error_msg);
+            if (rc != 0) {
+                fprintf(stderr, "Parse failed with code %d\n", rc);
+                fprintf(stderr, "Error: %s\n", error_msg);
+                free(error_msg);
+                return 3;
+            }
+            clock_gettime(CLOCK_REALTIME, &ts_after);
+            ts_diff.tv_sec  = 0;
+            ts_diff.tv_nsec = 0;
+            timespec_diff(&ts_after, &ts_before, &ts_diff);
+            jansson_json_cleanup(json);
+            printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+        }
+#endif
+#if HAVE_CJSON
+        if (strcmp(jsonengine, "CJSON") == 0) {
+            cjson_parser *json = NULL;
+            cjson_json_init(&json, &error_msg);
+            cjson_set_max_depth(json, depth_limit);
+            cjson_set_max_arg_num(json, arg_limit);
+            cjson_set_silence(json, silence);
+
+            clock_gettime(CLOCK_REALTIME, &ts_before);
+            rc = cjson_parse_file(json, jsonfile, &error_msg);
+            if (rc != 0) {
+                fprintf(stderr, "Parse failed with code %d\n", rc);
+                fprintf(stderr, "Error: %s\n", error_msg);
+                free(error_msg);
+                return 3;
+            }
+            clock_gettime(CLOCK_REALTIME, &ts_after);
+            ts_diff.tv_sec  = 0;
+            ts_diff.tv_nsec = 0;
+            timespec_diff(&ts_after, &ts_before, &ts_diff);
+            cjson_json_cleanup(json);
+            printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+        }
+#endif
+#if HAVE_JSONCPP
+        if (strcmp(jsonengine, "JSONCPP") == 0) {
+            jsoncpp_parser *json = NULL;
+            jsoncpp_json_init(&json, &error_msg);
+            jsoncpp_set_max_depth(json, depth_limit);
+            jsoncpp_set_max_arg_num(json, arg_limit);
+            jsoncpp_set_silence(json, silence);
+
+            clock_gettime(CLOCK_REALTIME, &ts_before);
+            rc = jsoncpp_parse_file(json, jsonfile, &error_msg);
+            if (rc != 0) {
+                fprintf(stderr, "Parse failed with code %d\n", rc);
+                fprintf(stderr, "Error: %s\n", error_msg);
+                free(error_msg);
+                return 3;
+            }
+            clock_gettime(CLOCK_REALTIME, &ts_after);
+            ts_diff.tv_sec  = 0;
+            ts_diff.tv_nsec = 0;
+            timespec_diff(&ts_after, &ts_before, &ts_diff);
+            jsoncpp_json_cleanup(json);
+            printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+        }
+#endif
+#if HAVE_JSONCONS
+        if (strcmp(jsonengine, "JSONCONS") == 0) {
+            jsoncons_parser *json = NULL;
+            jsoncons_json_init(&json, &error_msg);
+            jsoncons_set_max_depth(json, depth_limit);
+            jsoncons_set_max_arg_num(json, arg_limit);
+            jsoncons_set_silence(json, silence);
+
+            clock_gettime(CLOCK_REALTIME, &ts_before);
+            rc = jsoncons_parse_file(json, jsonfile, &error_msg);
+            if (rc != 0) {
+                fprintf(stderr, "Parse failed with code %d\n", rc);
+                fprintf(stderr, "Error: %s\n", error_msg);
+                free(error_msg);
+                return 3;
+            }
+            clock_gettime(CLOCK_REALTIME, &ts_after);
+            ts_diff.tv_sec  = 0;
+            ts_diff.tv_nsec = 0;
+            timespec_diff(&ts_after, &ts_before, &ts_diff);
+            jsoncons_json_cleanup(json);
+            printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
         free(jsonengine);

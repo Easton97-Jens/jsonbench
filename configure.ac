@@ -266,13 +266,21 @@ if test "$wantjsoncpp" != "no"; then
         AC_DEFINE([HAVE_JSONCPP], [1], [Mark that system has JsonCpp])
     ], [
         AC_LANG_PUSH([C++])
-        AC_CHECK_HEADERS([json/json.h], [],
-            [AC_MSG_ERROR([json/json.h not found for JsonCpp. Install jsoncpp development headers or disable with --with-jsoncpp=no])]
-        )
+        jsoncpp_header="no"
+        AC_CHECK_HEADERS([json/json.h], [jsoncpp_header="json/json.h"])
+        if test "$jsoncpp_header" = "no"; then
+            AC_CHECK_HEADERS([jsoncpp/json/json.h], [
+                jsoncpp_header="jsoncpp/json/json.h"
+                JSONCPP_CFLAGS="-I/usr/include/jsoncpp"
+            ])
+        fi
+        if test "$jsoncpp_header" = "no"; then
+            AC_MSG_ERROR([JsonCpp header not found (tried json/json.h and jsoncpp/json/json.h). Install jsoncpp development headers or disable with --with-jsoncpp=no])
+        fi
         old_LIBS="$LIBS"
         LIBS="$LIBS -ljsoncpp"
         AC_LINK_IFELSE(
-            [AC_LANG_PROGRAM([[#include <json/json.h>]], [[Json::Value root; return root.isNull() ? 0 : 1;]])],
+            [AC_LANG_PROGRAM([[#include <$jsoncpp_header>]], [[Json::Value root; return root.isNull() ? 0 : 1;]])],
             [
                 JSONCPP_LDADD="-ljsoncpp"
                 AC_DEFINE([HAVE_JSONCPP], [1], [Mark that system has JsonCpp])

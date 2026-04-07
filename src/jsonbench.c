@@ -8,6 +8,9 @@
 #include "cjsonparser.h"
 #include "jsoncppparser.h"
 #include "jsonconsparser.h"
+#include "simdjsonparser.h"
+#include "yyjsonparser.h"
+#include "glazeparser.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,6 +133,15 @@ strcpy(available_engines[engine_count++], "JSONCPP");
 #if HAVE_JSONCONS
 strcpy(available_engines[engine_count++], "JSONCONS");
 #endif
+#if HAVE_SIMDJSON
+strcpy(available_engines[engine_count++], "SIMDJSON");
+#endif
+#if HAVE_YYJSON
+strcpy(available_engines[engine_count++], "YYJSON");
+#endif
+#if HAVE_GLAZE
+strcpy(available_engines[engine_count++], "GLAZE");
+#endif
 
     while ((c = getopt(argc, argv, "he:a:d:s")) != -1) {
         switch (c) {
@@ -214,6 +226,21 @@ strcpy(available_engines[engine_count++], "JSONCONS");
 #endif
 #if HAVE_JSONCONS
         if (strcmp(jsonengine, "JSONCONS") == 0) {
+            file_based_parser = 1;
+        }
+#endif
+#if HAVE_SIMDJSON
+        if (strcmp(jsonengine, "SIMDJSON") == 0) {
+            file_based_parser = 1;
+        }
+#endif
+#if HAVE_YYJSON
+        if (strcmp(jsonengine, "YYJSON") == 0) {
+            file_based_parser = 1;
+        }
+#endif
+#if HAVE_GLAZE
+        if (strcmp(jsonengine, "GLAZE") == 0) {
             file_based_parser = 1;
         }
 #endif
@@ -441,6 +468,78 @@ strcpy(available_engines[engine_count++], "JSONCONS");
             ts_diff.tv_nsec = 0;
             timespec_diff(&ts_after, &ts_before, &ts_diff);
             jsoncons_json_cleanup(json);
+            printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+        }
+#endif
+#if HAVE_SIMDJSON
+        if (strcmp(jsonengine, "SIMDJSON") == 0) {
+            simdjson_parser *json = NULL;
+            simdjson_json_init(&json, &error_msg);
+            simdjson_set_max_depth(json, depth_limit);
+            simdjson_set_max_arg_num(json, arg_limit);
+            simdjson_set_silence(json, silence);
+
+            clock_gettime(CLOCK_REALTIME, &ts_before);
+            rc = simdjson_parse_file(json, jsonfile, &error_msg);
+            if (rc != 0) {
+                fprintf(stderr, "Parse failed with code %d\n", rc);
+                fprintf(stderr, "Error: %s\n", error_msg);
+                free(error_msg);
+                return 3;
+            }
+            clock_gettime(CLOCK_REALTIME, &ts_after);
+            ts_diff.tv_sec  = 0;
+            ts_diff.tv_nsec = 0;
+            timespec_diff(&ts_after, &ts_before, &ts_diff);
+            simdjson_json_cleanup(json);
+            printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+        }
+#endif
+#if HAVE_YYJSON
+        if (strcmp(jsonengine, "YYJSON") == 0) {
+            yyjson_parser *json = NULL;
+            yyjson_json_init(&json, &error_msg);
+            yyjson_set_max_depth(json, depth_limit);
+            yyjson_set_max_arg_num(json, arg_limit);
+            yyjson_set_silence(json, silence);
+
+            clock_gettime(CLOCK_REALTIME, &ts_before);
+            rc = yyjson_parse_file(json, jsonfile, &error_msg);
+            if (rc != 0) {
+                fprintf(stderr, "Parse failed with code %d\n", rc);
+                fprintf(stderr, "Error: %s\n", error_msg);
+                free(error_msg);
+                return 3;
+            }
+            clock_gettime(CLOCK_REALTIME, &ts_after);
+            ts_diff.tv_sec  = 0;
+            ts_diff.tv_nsec = 0;
+            timespec_diff(&ts_after, &ts_before, &ts_diff);
+            yyjson_json_cleanup(json);
+            printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
+        }
+#endif
+#if HAVE_GLAZE
+        if (strcmp(jsonengine, "GLAZE") == 0) {
+            glaze_parser *json = NULL;
+            glaze_json_init(&json, &error_msg);
+            glaze_set_max_depth(json, depth_limit);
+            glaze_set_max_arg_num(json, arg_limit);
+            glaze_set_silence(json, silence);
+
+            clock_gettime(CLOCK_REALTIME, &ts_before);
+            rc = glaze_parse_file(json, jsonfile, &error_msg);
+            if (rc != 0) {
+                fprintf(stderr, "Parse failed with code %d\n", rc);
+                fprintf(stderr, "Error: %s\n", error_msg);
+                free(error_msg);
+                return 3;
+            }
+            clock_gettime(CLOCK_REALTIME, &ts_after);
+            ts_diff.tv_sec  = 0;
+            ts_diff.tv_nsec = 0;
+            timespec_diff(&ts_after, &ts_before, &ts_diff);
+            glaze_json_cleanup(json);
             printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif

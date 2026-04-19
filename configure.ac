@@ -178,10 +178,13 @@ if test "$wannlohmannjson" != "no"; then
     [AC_MSG_ERROR([NlohmannJSON headers not found. Install nlohmannjson or use --disable-nlohmannjson])]
   )
   AC_DEFINE([HAVE_NLOHMANNJSON], [1], [Mark that user wants NlohmannJSON])
+  have_nlohmannjson=yes
   AC_LANG_POP([C++])
+else
+  have_nlohmannjson=no
 fi
 
-AM_CONDITIONAL([HAVE_NLOHMANNJSON], [test "x$enable_nlohmannjson" = "xyes"])
+AM_CONDITIONAL([HAVE_NLOHMANNJSON], [test "x$have_nlohmannjson" = "xyes"])
 #dnl End check for nlohmannjson
 
 dnl Check if we want to use json-c or not

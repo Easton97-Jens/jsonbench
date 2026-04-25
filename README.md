@@ -1,157 +1,183 @@
-jsonbench
+---
+
+# jsonbench
+
 =========
 
 Welcome to the `jsonbench` documentation.
 
 ## Description
 
-The purpose of this tool is to compare the performance of different JSON C libraries and to show what to expect from a possible alternative JSON processor. For more details, take a look at the tool's source. Currently, mod_security2 and libmodsecurity3 use YAJL for JSON processing. Unfortunately, this library is deprecated and is no longer supported by its maintainer.
+The purpose of this tool is to compare the performance of different JSON C/C++ libraries and to show what to expect from a possible alternative JSON processor.
 
-Note that mod_security2 processes JSON and creates keys and values. Keys are the names of the JSON keys and values are their values. If the JSON object is an array, the key will be the string `array`. For multidimensional arrays, the key is `array.array.....`.
+Currently, mod_security2 and libmodsecurity3 use YAJL for JSON processing. Unfortunately, this library is deprecated and no longer maintained.
+
+---
+
+## Supported JSON Engines
+
+The tool currently supports the following JSON parsers:
+
+* YAJL
+* RAPIDJSON
+* NLOHMANNJSON
+* JSONC
+* JANSSON
+* CJSON
+* JSONCPP
+* JSONCONS
+* SIMDJSON
+* YYJSON
+* GLAZE
+
+You can list them via:
+
+```bash
+src/jsonbench -h
+```
+
+---
 
 ## Requirements
 
-To compile the code you need the any of these JSON C libraries (hopefully this will be expand):
-* yajl
-* RapidJSON
-* nlohmann JSON
+To compile the code, you need development packages (`-dev`) of the JSON libraries.
 
-To install them, try these commands:
+### Install required packages (Debian/Ubuntu)
 
 ```bash
-sudo apt install libyajl-dev libyajl2 rapidjson-dev nlohmann-json3.12-dev
+sudo apt install \
+    libyajl-dev \
+    rapidjson-dev \
+    nlohmann-json3-dev \
+    libjson-c-dev \
+    libjansson-dev \
+    libcjson-dev \
+    libjsoncpp-dev \
+    libsimdjson-dev \
+    libyyjson-dev \
+    libjsoncons-dev \
+    libglaze-dev
 ```
 
-Note, that RapidJSON and nlohmann JSON are "header-only" parsers, you need to install `rapidjson-dev` and `nlohmann-json3.12-dev`.
+Note:
 
-You also need `autoconf`, `automake`, `autotools-dev`, `make` and `gcc` or `clang` packages:
+* The `-dev` packages are required for compiling (headers, pkg-config, etc.)
+* Runtime libraries (e.g. `libjsoncpp26`, `libsimdjson25`, etc.) are installed automatically
+
+---
+
+### Package availability note
+
+Some packages depend on your distribution version.
+
+Especially:
+
+* **libglaze-dev** is only available in newer Linux distributions
+* Older systems may not provide it
+
+You can check availability with:
 
 ```bash
-sudo apt install autoconf automake autotools-dev make gcc
+apt list | grep glaze
 ```
+
+or
+
+```bash
+apt search libglaze-dev
+```
+
+---
+
+### Header-only libraries
+
+These parsers are header-only:
+
+* RapidJSON (`rapidjson-dev`)
+* nlohmann JSON (`nlohmann-json3-dev`)
+
+They do not require linking against a library.
+
+---
 
 ## Build
-
-Download and unpack the source, and run these commands
 
 ```bash
 ./autogen.sh
 ./configure
 make
 ```
-If you don't want to use any available JSON library, you can ignore it, eg:
+
+If you want to disable a parser:
+
 ```bash
-./configure --wit-yajl=no
+./configure --with-yajl=no
 ```
 
-### Other `configure` flags:
-For the complete list, please type `./configure --help`.
+---
 
-Relevant flags:
+### Special note for GLAZE
+
+GLAZE requires **C++23 support**.
+
+You must configure the build like this:
+
+```bash
+CXXFLAGS="-std=c++23" ./configure
 ```
-  --with-file-buffer-size=SIZE
-                          Set buffer size (default: 524288 bytes (512kB))
-  --with-json-string-size=SIZE
-                          Set buffer size for JSON strings (key, values)
-                          (default: 2048 bytes (2kB))
-```
-I didn't want to use dynamic strings and use `malloc()`/`calloc()`, therefore I used static length buffer in every cases. With these options, you can set the buffer's size.
 
-The `--with-file-buffer-size` describes how big file you want to process. The default value is 512kB.
+Otherwise, compilation will fail.
 
-The `--with-json-string-size` describes how long can be a processed json key and value. The default value is 2kB. You can owervrite these values with these options. The values are in bytes.
+---
 
 ## Run
 
-To run the tool, type:
+Show help:
+
 ```bash
 src/jsonbench -h
 ```
 
-Or if you want to try a parser:
+Run with a specific parser:
+
 ```bash
 src/jsonbench -e YAJL
 ```
 
-or
+Example:
 
 ```bash
-src/jsonbench -e RAPIDJSON
+src/jsonbench -e SIMDJSON -s tests/test.json
 ```
+
+---
+
+## Command line options
+
+* `-h` Show help
+* `-e` Select JSON engine
+* `-d` Max depth (default: 500)
+* `-a` Max arguments (default: 500)
+* `-s` Silent mode
+
+---
+
+## Example
 
 ```bash
-src/jsonbench -e NLOHMANNJSON
+src/jsonbench -s -e YAJL -a 10000 tests/test06.json
 ```
 
-### Other command line flags
-
-`src/jsonbench -h` gives a full list of available options. Here is a detailed review:
-
-* `-e` sets the JSON engine (if there is any). Currently the tool supports YAJL and RAPIDJSON, so you can pass `-e YAJL` or `-e RAPIDJSON` (with capital letters).
-* `-d` sets the maximum depth of the JSON strcture. The default value is 500. This option is the same as the [SecRequestBodyJsonDepthLimit](https://github.com/owasp-modsecurity/ModSecurity/wiki/Reference-Manual-(v2.x)#user-content-SecRequestBodyJsonDepthLimit) in ModSecurity. When the processor reached this limit with the processed depth, the tool terminates with error.
-* `-a` sets the maximum size of arguments. The default value is 500. This option is the same as the [SecArgumentsLimit](https://github.com/owasp-modsecurity/ModSecurity/wiki/Reference-Manual-(v2.x)#secargumentslimit) in ModSecurity. When the processor reached this limit with the processed arguments, the tool terminates with error.
-* `-s` keeps the tool in silence, and don't print out the processed data. This can be help to measure the performance more accurate.
-
-### Example
+Output:
 
 ```
-src/jsonbench -e YAJL -a 10000 -s tests/512KB.json 
-
-Time: 0.002567988 usec
-```
-This command processes the file `tests/512KB.json` and prints out the total time of JSON processing. Eg. this does not include the file processing.
-
-```
-src/jsonbench -e YAJL -a 10000 tests/test06.json 
-array.array.id: 2489651045
-array.array.type: CreateEvent
-array.array.actor.id: 665991
-array.array.actor.login: petroav
-array.array.actor.gravatar_id: 
-array.array.actor.url: https://api.github.com/users/petroav
-array.array.actor.avatar_url: https://avatars.githubusercontent.com/u/665991?
-array.array.repo.id: 28688495
-array.array.repo.name: petroav/6.828
-array.array.repo.url: https://api.github.com/repos/petroav/6.828
-array.array.payload.ref: master
-array.array.payload.ref_type: branch
-array.array.payload.master_branch: master
-...
-array.array.public: true
-array.array.created_at: 2015-01-01T15:00:01Z
-
-Time: 0.000747715 usec
-```
-This command process the file `tests/test06.json` and prints out the processed keys and values. The syntax is the same as in case of mod_security2 JSON processing.
-
-Here is a "quick" command to check the performance of three parsers:
-
-```bash
-$ src/jsonbench -s -e YAJL -a 10000 tests/test06.json; src/jsonbench -s -e RAPIDJSON -a 10000 tests/test06.json; src/jsonbench -s -e NLOHMANNJSON -a 10000 tests/test06.json
-
 Time: 0.000092567 usec
-
-
-Time: 0.000103500 usec
-
-
-Time: 0.000196825 usec
 ```
 
-or if you want to see the result (note, that there is no `-s`):
-
-```bash
-$ src/jsonbench -e YAJL -a 10000 tests/test06.json; src/jsonbench -e RAPIDJSON -a 10000 tests/test06.json; src/jsonbench -e NLOHMANNJSON -a 10000 tests/test06.json
-array.array.id: 2489651045
-array.array.type: CreateEvent
-array.array.actor.id: 665991
-array.array.actor.login: petroav
-array.array.actor.gravatar_id: 
-array.array.actor.url: https://api.github.com/users/petroav
-array.array.actor.avatar_url: https://avatars.githubusercontent.com/u/665991?
-array.array.repo.id: 28688495
-```
+---
 
 ## TODO
 
-Add more possible JSON processors.
+* Improve documentation for all parsers
+* Add more JSON processors
+

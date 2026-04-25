@@ -1,7 +1,4 @@
----
-
-# jsonbench
-
+jsonbench
 =========
 
 Welcome to the `jsonbench` documentation.
@@ -12,7 +9,6 @@ The purpose of this tool is to compare the performance of different JSON C/C++ l
 
 Currently, mod_security2 and libmodsecurity3 use YAJL for JSON processing. Unfortunately, this library is deprecated and no longer maintained.
 
----
 
 ## Supported JSON Engines
 

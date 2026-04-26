@@ -100,7 +100,7 @@ They do not require linking against a library.
 
 ```bash
 ./autogen.sh
-./configure
+./configure optionally with --with-all-json=yes
 make
 ```
 

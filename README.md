@@ -111,6 +111,7 @@ If you want to disable a parser:
 ./configure --with-yajl=no
 ```
 
+---
 
 ## Run
 

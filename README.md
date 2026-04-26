@@ -24,7 +24,7 @@ The tool currently supports the following JSON parsers:
 * JSONCONS
 * SIMDJSON
 * YYJSON
-* GLAZE It is only compatible with C++23 or newer and is therefore not entirely suitable for modsecurity as it is based on C++17.
+* GLAZE  It is only compatible with C++23 or newer and is therefore not entirely suitable for modsecurity as it is based on C++17.
 
 You can list them via:
 

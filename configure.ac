@@ -134,7 +134,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wantyajl=yes ;;
         no)  wantyajl=no; AC_DEFINE([HAVE_YAJL], [0], [Mark that user does not want YAJL]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-yajl: $withval (use yes or no)]) ;;
     esac],
     [wantyajl="notset"]
 )
@@ -204,7 +204,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wantrapidjson=yes ;;
         no)  wantrapidjson=no; AC_DEFINE([HAVE_RAPIDJSON], [0], [Mark that user does not want RapidJSON]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-rapidjson: $withval (use yes or no)]) ;;
     esac],
     [wantrapidjson="notset"]
 )
@@ -221,6 +221,7 @@ if test "$wantrapidjson" != "no"; then
     ],
     [
       AC_DEFINE([HAVE_RAPIDJSON], [0], [Mark that user wants RapidJSON])
+      have_rapidjson=no
       if test "$wantalljson" = "yes" || test "$wantrapidjson" = "yes"; then
           AC_MSG_ERROR([RapidJSON headers not found. Required by --with-all-json=yes or --with-rapidjson=yes])
       else
@@ -245,7 +246,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wannlohmannjson=yes ;;
         no)  wannlohmannjson=no; AC_DEFINE([HAVE_NLOHMANNJSON], [0], [Mark that user does not want NlohmannJSON]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-nlohmannjson: $withval (use yes or no)]) ;;
     esac],
     [wannlohmannjson="notset"]
 )
@@ -262,6 +263,7 @@ if test "$wannlohmannjson" != "no"; then
     ],
     [
       AC_DEFINE([HAVE_NLOHMANNJSON], [0], [Mark that user wants NlohmannJSON])
+      have_nlohmannjson=no
       if test "$wantalljson" = "yes" || test "$wannlohmannjson" = "yes"; then
           AC_MSG_ERROR([NlohmannJSON headers not found. Required by --with-all-json=yes or --with-nlohmannjson=yes])
       else
@@ -286,7 +288,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wantjsonc=yes ;;
         no)  wantjsonc=no; AC_DEFINE([HAVE_JSONC], [0], [Mark that user does not want json-c]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-jsonc: $withval (use yes or no)]) ;;
     esac],
     [wantjsonc="notset"]
 )
@@ -302,6 +304,7 @@ if test "$wantjsonc" != "no"; then
         have_jsonc=yes
     ], [
         AC_DEFINE([HAVE_JSONC], [0], [Mark that system does not have json-c])
+        have_jsonc=no
         if test "$wantalljson" = "yes" || test "$wantjsonc" = "yes"; then
             AC_MSG_ERROR([json-c was requested with --with-all-json=yes or --with-jsonc=yes but not found via pkg-config. Install json-c or use --with-jsonc=no])
         else
@@ -320,7 +323,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wantjansson=yes ;;
         no)  wantjansson=no; AC_DEFINE([HAVE_JANSSON], [0], [Mark that user does not want jansson]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-jansson: $withval (use yes or no)]) ;;
     esac],
     [wantjansson="notset"]
 )
@@ -336,6 +339,7 @@ if test "$wantjansson" != "no"; then
         have_jansson=yes
     ], [
         AC_DEFINE([HAVE_JANSSON], [0], [Mark that system does not have jansson])
+        have_jansson=no
         if test "$wantalljson" = "yes" || test "$wantjansson" = "yes"; then
             AC_MSG_ERROR([jansson was requested with --with-all-json=yes or --with-jansson=yes but not found via pkg-config. Install jansson or use --with-jansson=no])
         else
@@ -354,7 +358,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wantcjson=yes ;;
         no)  wantcjson=no; AC_DEFINE([HAVE_CJSON], [0], [Mark that user does not want cJSON]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-cjson: $withval (use yes or no)]) ;;
     esac],
     [wantcjson="notset"]
 )
@@ -370,6 +374,7 @@ if test "$wantcjson" != "no"; then
         have_cjson=yes
     ], [
         AC_DEFINE([HAVE_CJSON], [0], [Mark that system does not have cJSON])
+        have_cjson=no
         if test "$wantalljson" = "yes" || test "$wantcjson" = "yes"; then
             AC_MSG_ERROR([cJSON was requested with --with-all-json=yes or --with-cjson=yes but not found via pkg-config as libcjson. Install libcjson or use --with-cjson=no])
         else
@@ -388,7 +393,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wantjsoncpp=yes ;;
         no)  wantjsoncpp=no; AC_DEFINE([HAVE_JSONCPP], [0], [Mark that user does not want JsonCpp]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-jsoncpp: $withval (use yes or no)]) ;;
     esac],
     [wantjsoncpp="notset"]
 )
@@ -458,7 +463,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wantsimdjson=yes ;;
         no)  wantsimdjson=no; AC_DEFINE([HAVE_SIMDJSON], [0], [Mark that user does not want simdjson]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-simdjson: $withval (use yes or no)]) ;;
     esac],
     [wantsimdjson="notset"]
 )
@@ -470,6 +475,7 @@ if test "$wantsimdjson" != "no"; then
     PKG_CHECK_MODULES([SIMDJSON], [simdjson], [
         SIMDJSON_CFLAGS="$SIMDJSON_CFLAGS"
         SIMDJSON_LDADD="$SIMDJSON_LIBS"
+        AC_DEFINE([HAVE_SIMDJSON], [1], [Mark that system has simdjson])
         have_simdjson=yes
     ], [
         AC_LANG_PUSH([C++])
@@ -522,7 +528,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wantyyjson=yes ;;
         no)  wantyyjson=no; AC_DEFINE([HAVE_YYJSON], [0], [Mark that user does not want yyjson]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-yyjson: $withval (use yes or no)]) ;;
     esac],
     [wantyyjson="notset"]
 )
@@ -538,6 +544,7 @@ if test "$wantyyjson" != "no"; then
         have_yyjson=yes
     ], [
         AC_DEFINE([HAVE_YYJSON], [0], [Mark that system does not have yyjson])
+        have_yyjson=no
         if test "$wantalljson" = "yes" || test "$wantyyjson" = "yes"; then
             AC_MSG_ERROR([yyjson was requested with --with-all-json=yes or --with-yyjson=yes but not found via pkg-config. Install yyjson or use --with-yyjson=no])
         else
@@ -556,7 +563,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wantglaze=yes ;;
         no)  wantglaze=no; AC_DEFINE([HAVE_GLAZE], [0], [Mark that user does not want glaze]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-glaze: $withval (use yes or no)]) ;;
     esac],
     [wantglaze="notset"]
 )
@@ -585,6 +592,7 @@ if test "$wantglaze" != "no"; then
     else
         AC_MSG_RESULT([no])
         AC_DEFINE([HAVE_GLAZE], [0], [Mark that system does not have glaze])
+        have_glaze=no
         if test "$wantalljson" = "yes" || test "$wantglaze" = "yes"; then
             AC_MSG_ERROR([glaze/glaze.hpp not found or not compilable with tested flags -std=c++23, -std=c++2b, -std=c++26, -std=c++2c. Required by --with-all-json=yes or --with-glaze=yes])
         else
@@ -605,7 +613,7 @@ AC_ARG_WITH(
     [case "$withval" in
         yes) wantjsoncons=yes ;;
         no)  wantjsoncons=no; AC_DEFINE([HAVE_JSONCONS], [0], [Mark that user does not want jsoncons]) ;;
-        *)   AC_MSG_ERROR([Invalid value for --with-feature: $withval]) ;;
+        *)   AC_MSG_ERROR([Invalid value for --with-jsoncons: $withval (use yes or no)]) ;;
     esac],
     [wantjsoncons="notset"]
 )
@@ -621,6 +629,7 @@ if test "$wantjsoncons" != "no"; then
         ],
         [
             AC_DEFINE([HAVE_JSONCONS], [0], [Mark that system does not have jsoncons])
+            have_jsoncons=no
             if test "$wantalljson" = "yes" || test "$wantjsoncons" = "yes"; then
                 AC_MSG_ERROR([jsoncons/json.hpp not found. Required by --with-all-json=yes or --with-jsoncons=yes])
             else

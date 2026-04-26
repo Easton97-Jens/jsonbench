@@ -111,21 +111,6 @@ If you want to disable a parser:
 ./configure --with-yajl=no
 ```
 
----
-
-### Special note for GLAZE
-
-GLAZE requires **C++23 support**.
-
-You must configure the build like this:
-
-```bash
-CXXFLAGS="-std=c++23" ./configure
-```
-
-Otherwise, compilation will fail.
-
----
 
 ## Run
 

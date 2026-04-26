@@ -103,7 +103,7 @@ They do not require linking against a library.
 ./configure 
 make
 ```
-./configure optionally with --with-all-json=yes It forces everyone to initialize.
+./configure optionally with --with-all-json=yes. This option requires all supported JSON libraries to be available and causes configuration to fail if any are missing.
 
 If you want to disable a parser:
 

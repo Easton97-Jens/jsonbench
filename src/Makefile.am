@@ -32,4 +32,4 @@ jsonbench_LDADD = $(YAJL_LDADD) $(JSONC_LDADD) $(JANSSON_LDADD) \
                   $(CJSON_LDADD) $(JSONCPP_LDADD) $(SIMDJSON_LDADD) \
                   $(YYJSON_LDADD)
 
-jsonbench_glazeparser_cpp_CXXFLAGS = $(AM_CXXFLAGS) $(GLAZE_CXXFLAGS)
+glazeparser_cpp_CXXFLAGS = $(AM_CXXFLAGS) $(GLAZE_CXXFLAGS)

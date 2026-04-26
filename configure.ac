@@ -178,7 +178,7 @@ if test "$wantyajl" != "no"; then
         if test "$wantalljson" = "yes" || test "$wantyajl" = "yes"; then
             AC_MSG_ERROR([Can't find YAJL package. Required by --with-all-json=yes or --with-yajl=yes])
         fi
-        AC_DEFINE([HAVE_YAJL], [0], [Mark that system has YAJL])
+        AC_DEFINE([HAVE_YAJL], [0], [Mark that system does not have YAJL])
         have_yajl=no
     fi
 else
@@ -301,7 +301,7 @@ if test "$wantjsonc" != "no"; then
         AC_DEFINE([HAVE_JSONC], [1], [Mark that system has json-c])
         have_jsonc=yes
     ], [
-        AC_DEFINE([HAVE_JSONC], [0], [Mark that system has json-c])
+        AC_DEFINE([HAVE_JSONC], [0], [Mark that system does not have json-c])
         if test "$wantalljson" = "yes" || test "$wantjsonc" = "yes"; then
             AC_MSG_ERROR([json-c was requested with --with-all-json=yes or --with-jsonc=yes but not found via pkg-config. Install json-c or use --with-jsonc=no])
         else
@@ -335,7 +335,7 @@ if test "$wantjansson" != "no"; then
         AC_DEFINE([HAVE_JANSSON], [1], [Mark that system has jansson])
         have_jansson=yes
     ], [
-        AC_DEFINE([HAVE_JANSSON], [0], [Mark that system has jansson])
+        AC_DEFINE([HAVE_JANSSON], [0], [Mark that system does not have jansson])
         if test "$wantalljson" = "yes" || test "$wantjansson" = "yes"; then
             AC_MSG_ERROR([jansson was requested with --with-all-json=yes or --with-jansson=yes but not found via pkg-config. Install jansson or use --with-jansson=no])
         else
@@ -369,7 +369,7 @@ if test "$wantcjson" != "no"; then
         AC_DEFINE([HAVE_CJSON], [1], [Mark that system has cJSON])
         have_cjson=yes
     ], [
-        AC_DEFINE([HAVE_CJSON], [0], [Mark that system has cJSON])
+        AC_DEFINE([HAVE_CJSON], [0], [Mark that system does not have cJSON])
         if test "$wantalljson" = "yes" || test "$wantcjson" = "yes"; then
             AC_MSG_ERROR([cJSON was requested with --with-all-json=yes or --with-cjson=yes but not found via pkg-config as libcjson. Install libcjson or use --with-cjson=no])
         else
@@ -413,32 +413,35 @@ if test "$wantjsoncpp" != "no"; then
             ])
         fi
         if test "$jsoncpp_header" = "no"; then
-            AC_DEFINE([HAVE_JSONCPP], [0], [Mark that system has JsonCpp])
+            AC_DEFINE([HAVE_JSONCPP], [0], [Mark that system does not have JsonCpp])
+            have_jsoncpp=no
             if test "$wantalljson" = "yes" || test "$wantjsoncpp" = "yes"; then
                 AC_MSG_ERROR([JsonCpp header not found (tried json/json.h and jsoncpp/json/json.h). Required by --with-all-json=yes or --with-jsoncpp=yes])
             else
                 AC_MSG_NOTICE([JsonCpp headers not found. Continuing without jsoncpp.])
             fi
+        else
+            old_LIBS="$LIBS"
+            LIBS="$LIBS -ljsoncpp"
+            AC_LINK_IFELSE(
+                [AC_LANG_PROGRAM([[#include <$jsoncpp_header>]], [[Json::Value root; return root.isNull() ? 0 : 1;]])],
+                [
+                    JSONCPP_LDADD="-ljsoncpp"
+                    AC_DEFINE([HAVE_JSONCPP], [1], [Mark that system has JsonCpp])
+                    have_jsoncpp=yes
+                ],
+                [
+                    AC_DEFINE([HAVE_JSONCPP], [0], [Mark that system does not have JsonCpp])
+                    have_jsoncpp=no
+                    if test "$wantalljson" = "yes" || test "$wantjsoncpp" = "yes"; then
+                        AC_MSG_ERROR([JsonCpp library not found. Required by --with-all-json=yes or --with-jsoncpp=yes])
+                    else
+                        AC_MSG_NOTICE([JsonCpp library not found. Continuing without jsoncpp.])
+                    fi
+                ]
+            )
+            LIBS="$old_LIBS"
         fi
-        old_LIBS="$LIBS"
-        LIBS="$LIBS -ljsoncpp"
-        AC_LINK_IFELSE(
-            [AC_LANG_PROGRAM([[#include <$jsoncpp_header>]], [[Json::Value root; return root.isNull() ? 0 : 1;]])],
-            [
-                JSONCPP_LDADD="-ljsoncpp"
-                AC_DEFINE([HAVE_JSONCPP], [1], [Mark that system has JsonCpp])
-                have_jsoncpp=yes
-            ],
-            [
-                AC_DEFINE([HAVE_JSONCPP], [0], [Mark that system has JsonCpp])
-                if test "$wantalljson" = "yes" || test "$wantjsoncpp" = "yes"; then
-                    AC_MSG_ERROR([JsonCpp library not found. Required by --with-all-json=yes or --with-jsoncpp=yes])
-                else
-                    AC_MSG_NOTICE([JsonCpp library not found. Continuing without jsoncpp.])
-                fi
-            ]
-        )
-        LIBS="$old_LIBS"
         AC_LANG_POP([C++])
     ])
 else
@@ -467,13 +470,15 @@ if test "$wantsimdjson" != "no"; then
     PKG_CHECK_MODULES([SIMDJSON], [simdjson], [
         SIMDJSON_CFLAGS="$SIMDJSON_CFLAGS"
         SIMDJSON_LDADD="$SIMDJSON_LIBS"
-        AC_DEFINE([HAVE_SIMDJSON], [1], [Mark that system has simdjson])
         have_simdjson=yes
     ], [
         AC_LANG_PUSH([C++])
+        simdjson_header_found=yes
         AC_CHECK_HEADERS([simdjson.h], [],
             [
-                AC_DEFINE([HAVE_SIMDJSON], [0], [Mark that system has simdjson])
+                simdjson_header_found=no
+                AC_DEFINE([HAVE_SIMDJSON], [0], [Mark that system does not have simdjson])
+                have_simdjson=no
                 if test "$wantalljson" = "yes" || test "$wantsimdjson" = "yes"; then
                     AC_MSG_ERROR([simdjson.h not found. Required by --with-all-json=yes or --with-simdjson=yes])
                 else
@@ -481,25 +486,28 @@ if test "$wantsimdjson" != "no"; then
                 fi
             ]
         )
-        old_LIBS="$LIBS"
-        LIBS="$LIBS -lsimdjson"
-        AC_LINK_IFELSE(
-            [AC_LANG_PROGRAM([[#include <simdjson.h>]], [[simdjson::ondemand::parser parser; return 0;]])],
-            [
-                SIMDJSON_LDADD="-lsimdjson"
-                AC_DEFINE([HAVE_SIMDJSON], [1], [Mark that system has simdjson])
-                have_simdjson=yes
-            ],
-            [
-                AC_DEFINE([HAVE_SIMDJSON], [0], [Mark that system has simdjson])
-                if test "$wantalljson" = "yes" || test "$wantsimdjson" = "yes"; then
-                    AC_MSG_ERROR([simdjson library not found. Required by --with-all-json=yes or --with-simdjson=yes])
-                else
-                    AC_MSG_NOTICE([simdjson library not found. Continuing without simdjson.])
-                fi
-            ]
-        )
-        LIBS="$old_LIBS"
+        if test "$simdjson_header_found" = "yes"; then
+            old_LIBS="$LIBS"
+            LIBS="$LIBS -lsimdjson"
+            AC_LINK_IFELSE(
+                [AC_LANG_PROGRAM([[#include <simdjson.h>]], [[simdjson::ondemand::parser parser; return 0;]])],
+                [
+                    SIMDJSON_LDADD="-lsimdjson"
+                    AC_DEFINE([HAVE_SIMDJSON], [1], [Mark that system has simdjson])
+                    have_simdjson=yes
+                ],
+                [
+                    AC_DEFINE([HAVE_SIMDJSON], [0], [Mark that system does not have simdjson])
+                    have_simdjson=no
+                    if test "$wantalljson" = "yes" || test "$wantsimdjson" = "yes"; then
+                        AC_MSG_ERROR([simdjson library not found. Required by --with-all-json=yes or --with-simdjson=yes])
+                    else
+                        AC_MSG_NOTICE([simdjson library not found. Continuing without simdjson.])
+                    fi
+                ]
+            )
+            LIBS="$old_LIBS"
+        fi
         AC_LANG_POP([C++])
     ])
 else
@@ -529,7 +537,7 @@ if test "$wantyyjson" != "no"; then
         AC_DEFINE([HAVE_YYJSON], [1], [Mark that system has yyjson])
         have_yyjson=yes
     ], [
-        AC_DEFINE([HAVE_YYJSON], [0], [Mark that system has yyjson])
+        AC_DEFINE([HAVE_YYJSON], [0], [Mark that system does not have yyjson])
         if test "$wantalljson" = "yes" || test "$wantyyjson" = "yes"; then
             AC_MSG_ERROR([yyjson was requested with --with-all-json=yes or --with-yyjson=yes but not found via pkg-config. Install yyjson or use --with-yyjson=no])
         else
@@ -576,7 +584,7 @@ if test "$wantglaze" != "no"; then
         have_glaze=yes
     else
         AC_MSG_RESULT([no])
-        AC_DEFINE([HAVE_GLAZE], [0], [Mark that system has glaze])
+        AC_DEFINE([HAVE_GLAZE], [0], [Mark that system does not have glaze])
         if test "$wantalljson" = "yes" || test "$wantglaze" = "yes"; then
             AC_MSG_ERROR([glaze/glaze.hpp not found or not compilable with tested flags -std=c++23, -std=c++2b, -std=c++26, -std=c++2c. Required by --with-all-json=yes or --with-glaze=yes])
         else
@@ -612,7 +620,7 @@ if test "$wantjsoncons" != "no"; then
             have_jsoncons=yes
         ],
         [
-            AC_DEFINE([HAVE_JSONCONS], [0], [Mark that system has jsoncons])
+            AC_DEFINE([HAVE_JSONCONS], [0], [Mark that system does not have jsoncons])
             if test "$wantalljson" = "yes" || test "$wantjsoncons" = "yes"; then
                 AC_MSG_ERROR([jsoncons/json.hpp not found. Required by --with-all-json=yes or --with-jsoncons=yes])
             else

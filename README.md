@@ -100,9 +100,10 @@ They do not require linking against a library.
 
 ```bash
 ./autogen.sh
-./configure optionally with --with-all-json=yes
+./configure 
 make
 ```
+./configure optionally with --with-all-json=yes It forces everyone to initialize.
 
 If you want to disable a parser:
 

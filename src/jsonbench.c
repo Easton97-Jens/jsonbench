@@ -30,7 +30,6 @@
 #define LIMIT_DEPTH 500
 #endif
 
-// https://gist.github.com/diabloneo/9619917#gistcomment-3364033
 static inline void timespec_diff(const struct timespec *a, const struct timespec *b, struct timespec *result) {
     result->tv_sec  = a->tv_sec  - b->tv_sec;
     result->tv_nsec = a->tv_nsec - b->tv_nsec;
@@ -98,9 +97,9 @@ int main(int argc, char ** argv) {
     extern char   *optarg;
     extern int     optind, opterr, optopt;
 
-    char          *error_msg;
+    char          *error_msg = NULL;
     unsigned int   length = 0;
-    char           data[FILE_BUFFER_SIZE];  // 100M fixed length
+    char           data[FILE_BUFFER_SIZE];
     const char    *jsonfile = NULL;
     unsigned int   depth_limit = LIMIT_DEPTH;
     unsigned int   arg_limit   = LIMIT_ARG_NUM;
@@ -108,39 +107,37 @@ int main(int argc, char ** argv) {
     struct timespec ts_before, ts_after, ts_diff;
 
 #if HAVE_YAJL
-strcpy(available_engines[engine_count++], "YAJL");
+    strcpy(available_engines[engine_count++], "YAJL");
 #endif
-
 #if HAVE_RAPIDJSON
-strcpy(available_engines[engine_count++], "RAPIDJSON");
+    strcpy(available_engines[engine_count++], "RAPIDJSON");
 #endif
-
 #if HAVE_NLOHMANNJSON
-strcpy(available_engines[engine_count++], "NLOHMANNJSON");
+    strcpy(available_engines[engine_count++], "NLOHMANNJSON");
 #endif
 #if HAVE_JSONC
-strcpy(available_engines[engine_count++], "JSONC");
+    strcpy(available_engines[engine_count++], "JSONC");
 #endif
 #if HAVE_JANSSON
-strcpy(available_engines[engine_count++], "JANSSON");
+    strcpy(available_engines[engine_count++], "JANSSON");
 #endif
 #if HAVE_CJSON
-strcpy(available_engines[engine_count++], "CJSON");
+    strcpy(available_engines[engine_count++], "CJSON");
 #endif
 #if HAVE_JSONCPP
-strcpy(available_engines[engine_count++], "JSONCPP");
+    strcpy(available_engines[engine_count++], "JSONCPP");
 #endif
 #if HAVE_JSONCONS
-strcpy(available_engines[engine_count++], "JSONCONS");
+    strcpy(available_engines[engine_count++], "JSONCONS");
 #endif
 #if HAVE_SIMDJSON
-strcpy(available_engines[engine_count++], "SIMDJSON");
+    strcpy(available_engines[engine_count++], "SIMDJSON");
 #endif
 #if HAVE_YYJSON
-strcpy(available_engines[engine_count++], "YYJSON");
+    strcpy(available_engines[engine_count++], "YYJSON");
 #endif
 #if HAVE_GLAZE
-strcpy(available_engines[engine_count++], "GLAZE");
+    strcpy(available_engines[engine_count++], "GLAZE");
 #endif
 
     while ((c = getopt(argc, argv, "he:a:d:s")) != -1) {
@@ -149,11 +146,12 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 showhelp();
                 return 0;
             case 'e':
-                jsonengine    = strdup(optarg);
+                jsonengine = strdup(optarg);
                 if (jsonengine == NULL) {
                     fprintf(stderr, "Memory allocation error\n");
                     return EXIT_FAILURE;
                 }
+
                 int i = engine_count;
                 for(int e = 0; e < engine_count; e++) {
                     if (strcmp(jsonengine, available_engines[e]) == 0) {
@@ -161,6 +159,7 @@ strcpy(available_engines[engine_count++], "GLAZE");
                         break;
                     }
                 }
+
                 if (i == engine_count) {
                     fprintf(stderr, "JSON engine '%s' is not available!\n", jsonengine);
                     free(jsonengine);
@@ -168,16 +167,18 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 }
                 break;
             case 'a':
-                arg_limit     = atoi(optarg);
+                arg_limit = atoi(optarg);
                 if (arg_limit == 0 || arg_limit > (unsigned int)UINT_MAX) {
                     fprintf(stderr, "Ohh... Try to pass for '-a' an integer between 0 and %u\n", (unsigned int)UINT_MAX);
+                    free(jsonengine);
                     return EXIT_FAILURE;
                 }
                 break;
             case 'd':
-                depth_limit    = atoi(optarg);
+                depth_limit = atoi(optarg);
                 if (depth_limit == 0 || depth_limit > (unsigned int)UINT_MAX) {
-                    fprintf(stderr, "Ohh... Try to pass for '-a' an integer between 0 and %u\n", (unsigned int)UINT_MAX);
+                    fprintf(stderr, "Ohh... Try to pass for '-d' an integer between 0 and %u\n", (unsigned int)UINT_MAX);
+                    free(jsonengine);
                     return EXIT_FAILURE;
                 }
                 break;
@@ -186,12 +187,12 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 break;
             default:
                 showhelp();
+                free(jsonengine);
                 return 0;
         }
     }
 
     if (jsonengine != NULL) {
-
         for (int i = optind; i < argc; i++) {
             if (jsonfile == NULL) {
                 jsonfile = argv[i];
@@ -200,10 +201,12 @@ strcpy(available_engines[engine_count++], "GLAZE");
 
         if (jsonfile == NULL) {
             printf("No JSON file was given!\n");
+            free(jsonengine);
             return EXIT_FAILURE;
         }
 
         int file_based_parser = 0;
+
 #if HAVE_JSONC
         if (strcmp(jsonengine, "JSONC") == 0) {
             file_based_parser = 1;
@@ -246,27 +249,30 @@ strcpy(available_engines[engine_count++], "GLAZE");
 #endif
 
         int rc = 0;
+
         if (!file_based_parser) {
             rc = read_file(jsonfile, data);
             if (rc == 0) {
                 printf("Zero character read from file\n");
+                free(jsonengine);
                 return EXIT_FAILURE;
             }
             else if (rc < 0) {
                 printf("Error reading file\n");
+                free(jsonengine);
                 return EXIT_FAILURE;
             }
             else {
                 length = rc;
             }
         }
+
 #if HAVE_YAJL
         if (strcmp(jsonengine, "YAJL") == 0) {
             yajl_json_data *json = NULL;
             yajl_json_init(&json, &error_msg);
 
             if (json != NULL) {
-
                 json->depth_limit   = depth_limit;
                 json->arg_num_limit = arg_limit;
                 json->silence       = silence;
@@ -275,23 +281,27 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 if (yajl_json_process_chunk(json, data, length, &error_msg) < 0) {
                     printf("Error: %s\n", error_msg);
                     free(error_msg);
+                    error_msg = NULL;
                 }
                 clock_gettime(CLOCK_REALTIME, &ts_after);
+
                 ts_diff.tv_sec  = 0;
                 ts_diff.tv_nsec = 0;
                 timespec_diff(&ts_after, &ts_before, &ts_diff);
+
                 yajl_json_cleanup(json);
                 printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
             }
         }
 #endif
+
 #if HAVE_RAPIDJSON
         if (strcmp(jsonengine, "RAPIDJSON") == 0) {
-
             rj_parser *json = NULL;
             rj_json_init(&json, &error_msg);
             if (json == NULL) {
                 fprintf(stderr, "Failed to initialize JSON parser\n");
+                free(jsonengine);
                 return 2;
             }
 
@@ -305,26 +315,27 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
                 free(error_msg);
+                rj_json_cleanup(json);
+                free(jsonengine);
                 return 3;
             }
-            else {
-                clock_gettime(CLOCK_REALTIME, &ts_after);
-                ts_diff.tv_sec  = 0;
-                ts_diff.tv_nsec = 0;
-                timespec_diff(&ts_after, &ts_before, &ts_diff);
-                rj_json_cleanup(json);
-                printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
-            }
 
+            clock_gettime(CLOCK_REALTIME, &ts_after);
+            ts_diff.tv_sec  = 0;
+            ts_diff.tv_nsec = 0;
+            timespec_diff(&ts_after, &ts_before, &ts_diff);
+            rj_json_cleanup(json);
+            printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
+
 #if HAVE_NLOHMANNJSON
         if (strcmp(jsonengine, "NLOHMANNJSON") == 0) {
-
             nl_parser *json = NULL;
             nl_json_init(&json, &error_msg);
             if (json == NULL) {
                 fprintf(stderr, "Failed to initialize JSON parser\n");
+                free(jsonengine);
                 return 2;
             }
 
@@ -338,19 +349,20 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
                 free(error_msg);
+                nl_json_cleanup(json);
+                free(jsonengine);
                 return 3;
             }
-            else {
-                clock_gettime(CLOCK_REALTIME, &ts_after);
-                ts_diff.tv_sec  = 0;
-                ts_diff.tv_nsec = 0;
-                timespec_diff(&ts_after, &ts_before, &ts_diff);
-                nl_json_cleanup(json);
-                printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
-            }
 
+            clock_gettime(CLOCK_REALTIME, &ts_after);
+            ts_diff.tv_sec  = 0;
+            ts_diff.tv_nsec = 0;
+            timespec_diff(&ts_after, &ts_before, &ts_diff);
+            nl_json_cleanup(json);
+            printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
+
 #if HAVE_JSONC
         if (strcmp(jsonengine, "JSONC") == 0) {
             jsonc_parser *json = NULL;
@@ -365,8 +377,11 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
                 free(error_msg);
+                jsonc_json_cleanup(json);
+                free(jsonengine);
                 return 3;
             }
+
             clock_gettime(CLOCK_REALTIME, &ts_after);
             ts_diff.tv_sec  = 0;
             ts_diff.tv_nsec = 0;
@@ -375,6 +390,7 @@ strcpy(available_engines[engine_count++], "GLAZE");
             printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
+
 #if HAVE_JANSSON
         if (strcmp(jsonengine, "JANSSON") == 0) {
             jansson_parser *json = NULL;
@@ -389,8 +405,11 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
                 free(error_msg);
+                jansson_json_cleanup(json);
+                free(jsonengine);
                 return 3;
             }
+
             clock_gettime(CLOCK_REALTIME, &ts_after);
             ts_diff.tv_sec  = 0;
             ts_diff.tv_nsec = 0;
@@ -399,6 +418,7 @@ strcpy(available_engines[engine_count++], "GLAZE");
             printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
+
 #if HAVE_CJSON
         if (strcmp(jsonengine, "CJSON") == 0) {
             cjson_parser *json = NULL;
@@ -413,8 +433,11 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
                 free(error_msg);
+                cjson_json_cleanup(json);
+                free(jsonengine);
                 return 3;
             }
+
             clock_gettime(CLOCK_REALTIME, &ts_after);
             ts_diff.tv_sec  = 0;
             ts_diff.tv_nsec = 0;
@@ -423,6 +446,7 @@ strcpy(available_engines[engine_count++], "GLAZE");
             printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
+
 #if HAVE_JSONCPP
         if (strcmp(jsonengine, "JSONCPP") == 0) {
             jsoncpp_parser *json = NULL;
@@ -437,8 +461,11 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
                 free(error_msg);
+                jsoncpp_json_cleanup(json);
+                free(jsonengine);
                 return 3;
             }
+
             clock_gettime(CLOCK_REALTIME, &ts_after);
             ts_diff.tv_sec  = 0;
             ts_diff.tv_nsec = 0;
@@ -447,6 +474,7 @@ strcpy(available_engines[engine_count++], "GLAZE");
             printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
+
 #if HAVE_JSONCONS
         if (strcmp(jsonengine, "JSONCONS") == 0) {
             jsoncons_parser *json = NULL;
@@ -461,8 +489,11 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
                 free(error_msg);
+                jsoncons_json_cleanup(json);
+                free(jsonengine);
                 return 3;
             }
+
             clock_gettime(CLOCK_REALTIME, &ts_after);
             ts_diff.tv_sec  = 0;
             ts_diff.tv_nsec = 0;
@@ -471,6 +502,7 @@ strcpy(available_engines[engine_count++], "GLAZE");
             printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
+
 #if HAVE_SIMDJSON
         if (strcmp(jsonengine, "SIMDJSON") == 0) {
             simdjson_parser *json = NULL;
@@ -485,8 +517,11 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
                 free(error_msg);
+                simdjson_json_cleanup(json);
+                free(jsonengine);
                 return 3;
             }
+
             clock_gettime(CLOCK_REALTIME, &ts_after);
             ts_diff.tv_sec  = 0;
             ts_diff.tv_nsec = 0;
@@ -495,6 +530,7 @@ strcpy(available_engines[engine_count++], "GLAZE");
             printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
+
 #if HAVE_YYJSON
         if (strcmp(jsonengine, "YYJSON") == 0) {
             yyjson_parser *json = NULL;
@@ -509,8 +545,11 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
                 free(error_msg);
+                yyjson_json_cleanup(json);
+                free(jsonengine);
                 return 3;
             }
+
             clock_gettime(CLOCK_REALTIME, &ts_after);
             ts_diff.tv_sec  = 0;
             ts_diff.tv_nsec = 0;
@@ -519,6 +558,7 @@ strcpy(available_engines[engine_count++], "GLAZE");
             printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
+
 #if HAVE_GLAZE
         if (strcmp(jsonengine, "GLAZE") == 0) {
             glaze_parser *json = NULL;
@@ -533,8 +573,11 @@ strcpy(available_engines[engine_count++], "GLAZE");
                 fprintf(stderr, "Parse failed with code %d\n", rc);
                 fprintf(stderr, "Error: %s\n", error_msg);
                 free(error_msg);
+                glaze_json_cleanup(json);
+                free(jsonengine);
                 return 3;
             }
+
             clock_gettime(CLOCK_REALTIME, &ts_after);
             ts_diff.tv_sec  = 0;
             ts_diff.tv_nsec = 0;
@@ -543,6 +586,7 @@ strcpy(available_engines[engine_count++], "GLAZE");
             printf("\nTime: %ld.%09ld sec\n\n", (long)ts_diff.tv_sec, ts_diff.tv_nsec);
         }
 #endif
+
         free(jsonengine);
     }
     else {

@@ -26,10 +26,8 @@ jsonbench_CPPFLAGS = $(YAJL_CFLAGS) $(JSONC_CFLAGS) $(JANSSON_CFLAGS) \
                      $(YYJSON_CFLAGS) $(GLAZE_CFLAGS)
 
 jsonbench_CFLAGS = $(AM_CFLAGS)
-jsonbench_CXXFLAGS = $(AM_CXXFLAGS)
+jsonbench_CXXFLAGS = $(AM_CXXFLAGS) $(GLAZE_CXXFLAGS)
 
 jsonbench_LDADD = $(YAJL_LDADD) $(JSONC_LDADD) $(JANSSON_LDADD) \
                   $(CJSON_LDADD) $(JSONCPP_LDADD) $(SIMDJSON_LDADD) \
                   $(YYJSON_LDADD)
-
-glazeparser_cpp_CXXFLAGS = $(AM_CXXFLAGS) $(GLAZE_CXXFLAGS)

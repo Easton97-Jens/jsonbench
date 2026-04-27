@@ -99,15 +99,19 @@ int cjson_parse_file(cjson_parser *parser, const char *filename, char **error_ms
 }
 
 int cjson_set_max_depth(cjson_parser *parser, double max_depth) {
-    (void)parser;
+    if (parser == NULL) {
+        return -1;
+    }
     (void)max_depth;
-    return 0;
+    return 1;
 }
 
 int cjson_set_max_arg_num(cjson_parser *parser, double max_arg_num) {
-    (void)parser;
+    if (parser == NULL) {
+        return -1;
+    }
     (void)max_arg_num;
-    return 0;
+    return 1;
 }
 
 int cjson_set_silence(cjson_parser *parser, int silence) {

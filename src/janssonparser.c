@@ -43,15 +43,19 @@ int jansson_parse_file(jansson_parser *parser, const char *filename, char **erro
 }
 
 int jansson_set_max_depth(jansson_parser *parser, double max_depth) {
-    (void)parser;
+    if (parser == NULL) {
+        return -1;
+    }
     (void)max_depth;
-    return 0;
+    return 1;
 }
 
 int jansson_set_max_arg_num(jansson_parser *parser, double max_arg_num) {
-    (void)parser;
+    if (parser == NULL) {
+        return -1;
+    }
     (void)max_arg_num;
-    return 0;
+    return 1;
 }
 
 int jansson_set_silence(jansson_parser *parser, int silence) {

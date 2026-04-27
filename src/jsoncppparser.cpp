@@ -54,15 +54,19 @@ extern "C" int jsoncpp_parse_file(jsoncpp_parser *parser, const char *filename, 
 }
 
 extern "C" int jsoncpp_set_max_depth(jsoncpp_parser *parser, double max_depth) {
-    (void)parser;
+    if (parser == nullptr) {
+        return -1;
+    }
     (void)max_depth;
-    return 0;
+    return 1;
 }
 
 extern "C" int jsoncpp_set_max_arg_num(jsoncpp_parser *parser, double max_arg_num) {
-    (void)parser;
+    if (parser == nullptr) {
+        return -1;
+    }
     (void)max_arg_num;
-    return 0;
+    return 1;
 }
 
 extern "C" int jsoncpp_set_silence(jsoncpp_parser *parser, int silence) {

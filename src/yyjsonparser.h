@@ -3,6 +3,10 @@
 
 #include "../config.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if HAVE_YYJSON
 
 typedef struct yyjson_parser yyjson_parser;
@@ -14,6 +18,10 @@ int yyjson_set_max_arg_num(yyjson_parser *parser, double max_arg_num);
 int yyjson_set_silence(yyjson_parser *parser, int silence);
 int yyjson_json_cleanup(yyjson_parser *parser);
 
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif

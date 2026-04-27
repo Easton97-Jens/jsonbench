@@ -3,6 +3,10 @@
 
 #include "../config.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if HAVE_JANSSON
 
 typedef struct jansson_parser jansson_parser;
@@ -14,6 +18,10 @@ int jansson_set_max_arg_num(jansson_parser *parser, double max_arg_num);
 int jansson_set_silence(jansson_parser *parser, int silence);
 int jansson_json_cleanup(jansson_parser *parser);
 
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif

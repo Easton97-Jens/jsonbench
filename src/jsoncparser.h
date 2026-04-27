@@ -3,6 +3,10 @@
 
 #include "../config.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if HAVE_JSONC
 
 typedef struct jsonc_parser jsonc_parser;
@@ -14,6 +18,10 @@ int jsonc_set_max_arg_num(jsonc_parser *parser, double max_arg_num);
 int jsonc_set_silence(jsonc_parser *parser, int silence);
 int jsonc_json_cleanup(jsonc_parser *parser);
 
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif

@@ -128,15 +128,19 @@ extern "C" int simdjson_parse_file(simdjson_parser *parser, const char *filename
 }
 
 extern "C" int simdjson_set_max_depth(simdjson_parser *parser, double max_depth) {
-    (void)parser;
+    if (parser == nullptr) {
+        return -1;
+    }
     (void)max_depth;
-    return 0;
+    return 1;
 }
 
 extern "C" int simdjson_set_max_arg_num(simdjson_parser *parser, double max_arg_num) {
-    (void)parser;
+    if (parser == nullptr) {
+        return -1;
+    }
     (void)max_arg_num;
-    return 0;
+    return 1;
 }
 
 extern "C" int simdjson_set_silence(simdjson_parser *parser, int silence) {

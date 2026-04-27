@@ -94,15 +94,19 @@ int yyjson_parse_file(yyjson_parser *parser, const char *filename, char **error_
 }
 
 int yyjson_set_max_depth(yyjson_parser *parser, double max_depth) {
-    (void)parser;
+    if (parser == NULL) {
+        return -1;
+    }
     (void)max_depth;
-    return 0;
+    return 1;
 }
 
 int yyjson_set_max_arg_num(yyjson_parser *parser, double max_arg_num) {
-    (void)parser;
+    if (parser == NULL) {
+        return -1;
+    }
     (void)max_arg_num;
-    return 0;
+    return 1;
 }
 
 int yyjson_set_silence(yyjson_parser *parser, int silence) {

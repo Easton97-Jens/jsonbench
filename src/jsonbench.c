@@ -366,17 +366,54 @@ int main(int argc, char ** argv) {
 #if HAVE_JSONC
         if (strcmp(jsonengine, "JSONC") == 0) {
             jsonc_parser *json = NULL;
-            jsonc_json_init(&json, &error_msg);
-            jsonc_set_max_depth(json, depth_limit);
-            jsonc_set_max_arg_num(json, arg_limit);
-            jsonc_set_silence(json, silence);
+            rc = jsonc_json_init(&json, &error_msg);
+            if (rc != 0 || json == NULL) {
+                fprintf(stderr, "Failed to initialize JSON parser\n");
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
+                jsonc_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+
+            rc = jsonc_set_max_depth(json, depth_limit);
+            if (rc == 1) {
+                fprintf(stderr, "JSONC does not support max depth limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "jsonc_set_max_depth failed with code %d\n", rc);
+                jsonc_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jsonc_set_max_arg_num(json, arg_limit);
+            if (rc == 1) {
+                fprintf(stderr, "JSONC does not support max arg num limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "jsonc_set_max_arg_num failed with code %d\n", rc);
+                jsonc_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jsonc_set_silence(json, silence);
+            if (rc != 0) {
+                fprintf(stderr, "jsonc_set_silence failed with code %d\n", rc);
+                jsonc_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
 
             clock_gettime(CLOCK_REALTIME, &ts_before);
             rc = jsonc_parse_file(json, jsonfile, &error_msg);
             if (rc != 0) {
                 fprintf(stderr, "Parse failed with code %d\n", rc);
-                fprintf(stderr, "Error: %s\n", error_msg);
-                free(error_msg);
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
                 jsonc_json_cleanup(json);
                 free(jsonengine);
                 return 3;
@@ -394,17 +431,53 @@ int main(int argc, char ** argv) {
 #if HAVE_JANSSON
         if (strcmp(jsonengine, "JANSSON") == 0) {
             jansson_parser *json = NULL;
-            jansson_json_init(&json, &error_msg);
-            jansson_set_max_depth(json, depth_limit);
-            jansson_set_max_arg_num(json, arg_limit);
-            jansson_set_silence(json, silence);
+            rc = jansson_json_init(&json, &error_msg);
+            if (rc != 0 || json == NULL) {
+                fprintf(stderr, "Failed to initialize JSON parser\n");
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
+                jansson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jansson_set_max_depth(json, depth_limit);
+            if (rc == 1) {
+                fprintf(stderr, "JANSSON does not support max depth limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "jansson_set_max_depth failed with code %d\n", rc);
+                jansson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jansson_set_max_arg_num(json, arg_limit);
+            if (rc == 1) {
+                fprintf(stderr, "JANSSON does not support max arg num limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "jansson_set_max_arg_num failed with code %d\n", rc);
+                jansson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jansson_set_silence(json, silence);
+            if (rc != 0) {
+                fprintf(stderr, "jansson_set_silence failed with code %d\n", rc);
+                jansson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
 
             clock_gettime(CLOCK_REALTIME, &ts_before);
             rc = jansson_parse_file(json, jsonfile, &error_msg);
             if (rc != 0) {
                 fprintf(stderr, "Parse failed with code %d\n", rc);
-                fprintf(stderr, "Error: %s\n", error_msg);
-                free(error_msg);
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
                 jansson_json_cleanup(json);
                 free(jsonengine);
                 return 3;
@@ -422,17 +495,53 @@ int main(int argc, char ** argv) {
 #if HAVE_CJSON
         if (strcmp(jsonengine, "CJSON") == 0) {
             cjson_parser *json = NULL;
-            cjson_json_init(&json, &error_msg);
-            cjson_set_max_depth(json, depth_limit);
-            cjson_set_max_arg_num(json, arg_limit);
-            cjson_set_silence(json, silence);
+            rc = cjson_json_init(&json, &error_msg);
+            if (rc != 0 || json == NULL) {
+                fprintf(stderr, "Failed to initialize JSON parser\n");
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
+                cjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = cjson_set_max_depth(json, depth_limit);
+            if (rc == 1) {
+                fprintf(stderr, "CJSON does not support max depth limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "cjson_set_max_depth failed with code %d\n", rc);
+                cjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = cjson_set_max_arg_num(json, arg_limit);
+            if (rc == 1) {
+                fprintf(stderr, "CJSON does not support max arg num limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "cjson_set_max_arg_num failed with code %d\n", rc);
+                cjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = cjson_set_silence(json, silence);
+            if (rc != 0) {
+                fprintf(stderr, "cjson_set_silence failed with code %d\n", rc);
+                cjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
 
             clock_gettime(CLOCK_REALTIME, &ts_before);
             rc = cjson_parse_file(json, jsonfile, &error_msg);
             if (rc != 0) {
                 fprintf(stderr, "Parse failed with code %d\n", rc);
-                fprintf(stderr, "Error: %s\n", error_msg);
-                free(error_msg);
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
                 cjson_json_cleanup(json);
                 free(jsonengine);
                 return 3;
@@ -450,17 +559,53 @@ int main(int argc, char ** argv) {
 #if HAVE_JSONCPP
         if (strcmp(jsonengine, "JSONCPP") == 0) {
             jsoncpp_parser *json = NULL;
-            jsoncpp_json_init(&json, &error_msg);
-            jsoncpp_set_max_depth(json, depth_limit);
-            jsoncpp_set_max_arg_num(json, arg_limit);
-            jsoncpp_set_silence(json, silence);
+            rc = jsoncpp_json_init(&json, &error_msg);
+            if (rc != 0 || json == NULL) {
+                fprintf(stderr, "Failed to initialize JSON parser\n");
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
+                jsoncpp_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jsoncpp_set_max_depth(json, depth_limit);
+            if (rc == 1) {
+                fprintf(stderr, "JSONCPP does not support max depth limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "jsoncpp_set_max_depth failed with code %d\n", rc);
+                jsoncpp_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jsoncpp_set_max_arg_num(json, arg_limit);
+            if (rc == 1) {
+                fprintf(stderr, "JSONCPP does not support max arg num limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "jsoncpp_set_max_arg_num failed with code %d\n", rc);
+                jsoncpp_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jsoncpp_set_silence(json, silence);
+            if (rc != 0) {
+                fprintf(stderr, "jsoncpp_set_silence failed with code %d\n", rc);
+                jsoncpp_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
 
             clock_gettime(CLOCK_REALTIME, &ts_before);
             rc = jsoncpp_parse_file(json, jsonfile, &error_msg);
             if (rc != 0) {
                 fprintf(stderr, "Parse failed with code %d\n", rc);
-                fprintf(stderr, "Error: %s\n", error_msg);
-                free(error_msg);
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
                 jsoncpp_json_cleanup(json);
                 free(jsonengine);
                 return 3;
@@ -478,17 +623,53 @@ int main(int argc, char ** argv) {
 #if HAVE_JSONCONS
         if (strcmp(jsonengine, "JSONCONS") == 0) {
             jsoncons_parser *json = NULL;
-            jsoncons_json_init(&json, &error_msg);
-            jsoncons_set_max_depth(json, depth_limit);
-            jsoncons_set_max_arg_num(json, arg_limit);
-            jsoncons_set_silence(json, silence);
+            rc = jsoncons_json_init(&json, &error_msg);
+            if (rc != 0 || json == NULL) {
+                fprintf(stderr, "Failed to initialize JSON parser\n");
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
+                jsoncons_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jsoncons_set_max_depth(json, depth_limit);
+            if (rc == 1) {
+                fprintf(stderr, "JSONCONS does not support max depth limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "jsoncons_set_max_depth failed with code %d\n", rc);
+                jsoncons_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jsoncons_set_max_arg_num(json, arg_limit);
+            if (rc == 1) {
+                fprintf(stderr, "JSONCONS does not support max arg num limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "jsoncons_set_max_arg_num failed with code %d\n", rc);
+                jsoncons_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = jsoncons_set_silence(json, silence);
+            if (rc != 0) {
+                fprintf(stderr, "jsoncons_set_silence failed with code %d\n", rc);
+                jsoncons_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
 
             clock_gettime(CLOCK_REALTIME, &ts_before);
             rc = jsoncons_parse_file(json, jsonfile, &error_msg);
             if (rc != 0) {
                 fprintf(stderr, "Parse failed with code %d\n", rc);
-                fprintf(stderr, "Error: %s\n", error_msg);
-                free(error_msg);
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
                 jsoncons_json_cleanup(json);
                 free(jsonengine);
                 return 3;
@@ -506,17 +687,53 @@ int main(int argc, char ** argv) {
 #if HAVE_SIMDJSON
         if (strcmp(jsonengine, "SIMDJSON") == 0) {
             simdjson_parser *json = NULL;
-            simdjson_json_init(&json, &error_msg);
-            simdjson_set_max_depth(json, depth_limit);
-            simdjson_set_max_arg_num(json, arg_limit);
-            simdjson_set_silence(json, silence);
+            rc = simdjson_json_init(&json, &error_msg);
+            if (rc != 0 || json == NULL) {
+                fprintf(stderr, "Failed to initialize JSON parser\n");
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
+                simdjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = simdjson_set_max_depth(json, depth_limit);
+            if (rc == 1) {
+                fprintf(stderr, "SIMDJSON does not support max depth limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "simdjson_set_max_depth failed with code %d\n", rc);
+                simdjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = simdjson_set_max_arg_num(json, arg_limit);
+            if (rc == 1) {
+                fprintf(stderr, "SIMDJSON does not support max arg num limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "simdjson_set_max_arg_num failed with code %d\n", rc);
+                simdjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = simdjson_set_silence(json, silence);
+            if (rc != 0) {
+                fprintf(stderr, "simdjson_set_silence failed with code %d\n", rc);
+                simdjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
 
             clock_gettime(CLOCK_REALTIME, &ts_before);
             rc = simdjson_parse_file(json, jsonfile, &error_msg);
             if (rc != 0) {
                 fprintf(stderr, "Parse failed with code %d\n", rc);
-                fprintf(stderr, "Error: %s\n", error_msg);
-                free(error_msg);
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
                 simdjson_json_cleanup(json);
                 free(jsonengine);
                 return 3;
@@ -534,17 +751,53 @@ int main(int argc, char ** argv) {
 #if HAVE_YYJSON
         if (strcmp(jsonengine, "YYJSON") == 0) {
             yyjson_parser *json = NULL;
-            yyjson_json_init(&json, &error_msg);
-            yyjson_set_max_depth(json, depth_limit);
-            yyjson_set_max_arg_num(json, arg_limit);
-            yyjson_set_silence(json, silence);
+            rc = yyjson_json_init(&json, &error_msg);
+            if (rc != 0 || json == NULL) {
+                fprintf(stderr, "Failed to initialize JSON parser\n");
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
+                yyjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = yyjson_set_max_depth(json, depth_limit);
+            if (rc == 1) {
+                fprintf(stderr, "YYJSON does not support max depth limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "yyjson_set_max_depth failed with code %d\n", rc);
+                yyjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = yyjson_set_max_arg_num(json, arg_limit);
+            if (rc == 1) {
+                fprintf(stderr, "YYJSON does not support max arg num limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "yyjson_set_max_arg_num failed with code %d\n", rc);
+                yyjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = yyjson_set_silence(json, silence);
+            if (rc != 0) {
+                fprintf(stderr, "yyjson_set_silence failed with code %d\n", rc);
+                yyjson_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
 
             clock_gettime(CLOCK_REALTIME, &ts_before);
             rc = yyjson_parse_file(json, jsonfile, &error_msg);
             if (rc != 0) {
                 fprintf(stderr, "Parse failed with code %d\n", rc);
-                fprintf(stderr, "Error: %s\n", error_msg);
-                free(error_msg);
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
                 yyjson_json_cleanup(json);
                 free(jsonengine);
                 return 3;
@@ -562,17 +815,53 @@ int main(int argc, char ** argv) {
 #if HAVE_GLAZE
         if (strcmp(jsonengine, "GLAZE") == 0) {
             glaze_parser *json = NULL;
-            glaze_json_init(&json, &error_msg);
-            glaze_set_max_depth(json, depth_limit);
-            glaze_set_max_arg_num(json, arg_limit);
-            glaze_set_silence(json, silence);
+            rc = glaze_json_init(&json, &error_msg);
+            if (rc != 0 || json == NULL) {
+                fprintf(stderr, "Failed to initialize JSON parser\n");
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
+                glaze_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = glaze_set_max_depth(json, depth_limit);
+            if (rc == 1) {
+                fprintf(stderr, "GLAZE does not support max depth limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "glaze_set_max_depth failed with code %d\n", rc);
+                glaze_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = glaze_set_max_arg_num(json, arg_limit);
+            if (rc == 1) {
+                fprintf(stderr, "GLAZE does not support max arg num limit\n");
+            } else if (rc != 0) {
+                fprintf(stderr, "glaze_set_max_arg_num failed with code %d\n", rc);
+                glaze_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
+            rc = glaze_set_silence(json, silence);
+            if (rc != 0) {
+                fprintf(stderr, "glaze_set_silence failed with code %d\n", rc);
+                glaze_json_cleanup(json);
+                free(jsonengine);
+                return 2;
+            }
 
             clock_gettime(CLOCK_REALTIME, &ts_before);
             rc = glaze_parse_file(json, jsonfile, &error_msg);
             if (rc != 0) {
                 fprintf(stderr, "Parse failed with code %d\n", rc);
-                fprintf(stderr, "Error: %s\n", error_msg);
-                free(error_msg);
+                if (error_msg != NULL) {
+                    fprintf(stderr, "Error: %s\n", error_msg);
+                    free(error_msg);
+                    error_msg = NULL;
+                }
                 glaze_json_cleanup(json);
                 free(jsonengine);
                 return 3;

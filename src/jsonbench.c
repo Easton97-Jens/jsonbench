@@ -380,14 +380,18 @@ int main(int argc, char ** argv) {
             }
 
             rc = jsonc_set_max_depth(json, depth_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "JSONC does not support max depth limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "jsonc_set_max_depth failed with code %d\n", rc);
                 jsonc_json_cleanup(json);
                 free(jsonengine);
                 return 2;
             }
             rc = jsonc_set_max_arg_num(json, arg_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "JSONC does not support max arg num limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "jsonc_set_max_arg_num failed with code %d\n", rc);
                 jsonc_json_cleanup(json);
                 free(jsonengine);
@@ -440,14 +444,18 @@ int main(int argc, char ** argv) {
                 return 2;
             }
             rc = jansson_set_max_depth(json, depth_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "JANSSON does not support max depth limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "jansson_set_max_depth failed with code %d\n", rc);
                 jansson_json_cleanup(json);
                 free(jsonengine);
                 return 2;
             }
             rc = jansson_set_max_arg_num(json, arg_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "JANSSON does not support max arg num limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "jansson_set_max_arg_num failed with code %d\n", rc);
                 jansson_json_cleanup(json);
                 free(jsonengine);
@@ -500,14 +508,18 @@ int main(int argc, char ** argv) {
                 return 2;
             }
             rc = cjson_set_max_depth(json, depth_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "CJSON does not support max depth limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "cjson_set_max_depth failed with code %d\n", rc);
                 cjson_json_cleanup(json);
                 free(jsonengine);
                 return 2;
             }
             rc = cjson_set_max_arg_num(json, arg_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "CJSON does not support max arg num limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "cjson_set_max_arg_num failed with code %d\n", rc);
                 cjson_json_cleanup(json);
                 free(jsonengine);
@@ -560,14 +572,18 @@ int main(int argc, char ** argv) {
                 return 2;
             }
             rc = jsoncpp_set_max_depth(json, depth_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "JSONCPP does not support max depth limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "jsoncpp_set_max_depth failed with code %d\n", rc);
                 jsoncpp_json_cleanup(json);
                 free(jsonengine);
                 return 2;
             }
             rc = jsoncpp_set_max_arg_num(json, arg_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "JSONCPP does not support max arg num limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "jsoncpp_set_max_arg_num failed with code %d\n", rc);
                 jsoncpp_json_cleanup(json);
                 free(jsonengine);
@@ -620,14 +636,18 @@ int main(int argc, char ** argv) {
                 return 2;
             }
             rc = jsoncons_set_max_depth(json, depth_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "JSONCONS does not support max depth limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "jsoncons_set_max_depth failed with code %d\n", rc);
                 jsoncons_json_cleanup(json);
                 free(jsonengine);
                 return 2;
             }
             rc = jsoncons_set_max_arg_num(json, arg_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "JSONCONS does not support max arg num limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "jsoncons_set_max_arg_num failed with code %d\n", rc);
                 jsoncons_json_cleanup(json);
                 free(jsonengine);
@@ -680,14 +700,18 @@ int main(int argc, char ** argv) {
                 return 2;
             }
             rc = simdjson_set_max_depth(json, depth_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "SIMDJSON does not support max depth limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "simdjson_set_max_depth failed with code %d\n", rc);
                 simdjson_json_cleanup(json);
                 free(jsonengine);
                 return 2;
             }
             rc = simdjson_set_max_arg_num(json, arg_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "SIMDJSON does not support max arg num limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "simdjson_set_max_arg_num failed with code %d\n", rc);
                 simdjson_json_cleanup(json);
                 free(jsonengine);
@@ -740,14 +764,18 @@ int main(int argc, char ** argv) {
                 return 2;
             }
             rc = yyjson_set_max_depth(json, depth_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "YYJSON does not support max depth limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "yyjson_set_max_depth failed with code %d\n", rc);
                 yyjson_json_cleanup(json);
                 free(jsonengine);
                 return 2;
             }
             rc = yyjson_set_max_arg_num(json, arg_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "YYJSON does not support max arg num limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "yyjson_set_max_arg_num failed with code %d\n", rc);
                 yyjson_json_cleanup(json);
                 free(jsonengine);
@@ -800,14 +828,18 @@ int main(int argc, char ** argv) {
                 return 2;
             }
             rc = glaze_set_max_depth(json, depth_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "GLAZE does not support max depth limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "glaze_set_max_depth failed with code %d\n", rc);
                 glaze_json_cleanup(json);
                 free(jsonengine);
                 return 2;
             }
             rc = glaze_set_max_arg_num(json, arg_limit);
-            if (rc != 0) {
+            if (rc == 1) {
+                fprintf(stderr, "GLAZE does not support max arg num limit\n");
+            } else if (rc != 0) {
                 fprintf(stderr, "glaze_set_max_arg_num failed with code %d\n", rc);
                 glaze_json_cleanup(json);
                 free(jsonengine);

@@ -390,9 +390,23 @@ int yajl_parse_file(yajl_json_data *json, const char *filename, char **error_msg
     }
 
     size_t len = fread(buf, 1, FILE_BUFFER_SIZE - 1, fp);
-    int too_long = !feof(fp);
+    int read_error = ferror(fp);
+    int too_long = 0;
+    if (!read_error && len == FILE_BUFFER_SIZE - 1) {
+        int extra = fgetc(fp);
+        if (extra != EOF) {
+            too_long = 1;
+        } else {
+            read_error = ferror(fp);
+        }
+    }
     fclose(fp);
 
+    if (read_error) {
+        free(buf);
+        *error_msg = strdup("Error reading file");
+        return -1;
+    }
     if (too_long) {
         free(buf);
         *error_msg = strdup("File too long");

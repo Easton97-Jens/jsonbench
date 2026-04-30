@@ -29,6 +29,10 @@ struct yajl_json_data {
     int            silence;                  // cppcheck-suppress unusedStructMember
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int yajl_json_init(yajl_json_data **json, char **error_msg);
 
 int yajl_json_process(yajl_json_data *json, const char *buf,
@@ -43,7 +47,9 @@ int yajl_json_process_chunk(yajl_json_data *json, const char *buf,
 
 int yajl_parse_file(yajl_json_data *json, const char *filename, char **error_msg);
 
-int yajl_json_cleanup(yajl_json_data *json);
+#ifdef __cplusplus
+}
+#endif
 
 #endif
 

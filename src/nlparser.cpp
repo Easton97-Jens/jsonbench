@@ -268,9 +268,19 @@ extern "C" int nl_parse_file(nl_parser *parser, const char *filename, char **err
 
     std::vector<char> buf(FILE_BUFFER_SIZE);
     size_t len = fread(buf.data(), 1, FILE_BUFFER_SIZE - 1, fp);
-    int too_long = !feof(fp);
+    int read_error = ferror(fp);
+    int too_long = 0;
+    if (!read_error && len == FILE_BUFFER_SIZE - 1) {
+        char extra;
+        too_long = fread(&extra, 1, 1, fp) == 1;
+        read_error = ferror(fp);
+    }
     fclose(fp);
 
+    if (read_error) {
+        *error_msg = strdup("Error reading file");
+        return -1;
+    }
     if (too_long) {
         *error_msg = strdup("File too long");
         return -1;

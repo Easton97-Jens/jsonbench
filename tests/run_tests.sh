@@ -3,7 +3,7 @@ set -euo pipefail
 
 BINARY="$(cd "$(dirname "$0")/.." && pwd)/src/jsonbench"
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-TMPDIR_LOCAL=$(mktemp -d)
+TMPDIR_LOCAL=$(mktemp -d "${TMPDIR:-/tmp}/jsonbench.XXXXXX")
 trap 'rm -rf "$TMPDIR_LOCAL"' EXIT
 
 if [[ ! -x "$BINARY" ]]; then

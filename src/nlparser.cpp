@@ -11,7 +11,7 @@
 
 #include "pathhandler.h"
 
-#include "nlohmann/json.hpp"
+#include <nlohmann/json.hpp>
 
 using nljson = nlohmann::json;
 

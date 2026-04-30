@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-#ifdef HAVE_NLOHMANNJSON
+#if HAVE_NLOHMANNJSON
 
 #include "pathhandler.h"
 
@@ -250,6 +250,42 @@ extern "C" int nl_set_silence(nl_parser *parser, int silence) {
 
 extern "C" int nl_parser_cleanup(nl_parser *parser) {
     parser->impl->~NLSAXHandler();
+    return 0;
+}
+
+#ifndef FILE_BUFFER_SIZE
+#define FILE_BUFFER_SIZE 10485760
+#endif
+
+extern "C" int nl_parse_file(nl_parser *parser, const char *filename, char **error_msg) {
+    if (!parser || !filename || !error_msg) return -1;
+
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        *error_msg = strdup("Unable to open file");
+        return -1;
+    }
+
+    std::vector<char> buf(FILE_BUFFER_SIZE);
+    size_t len = fread(buf.data(), 1, FILE_BUFFER_SIZE - 1, fp);
+    int too_long = !feof(fp);
+    fclose(fp);
+
+    if (too_long) {
+        *error_msg = strdup("File too long");
+        return -1;
+    }
+    if (len == 0) {
+        *error_msg = strdup("Zero bytes read from file");
+        return -1;
+    }
+    buf[len] = '\0';
+
+    bool ok = nlohmann::json::sax_parse(buf.data(), buf.data() + len, parser->impl);
+    if (!ok) {
+        fprintf(stderr, "NlohmannJSON error: parsing failed\n");
+        return 2;
+    }
     return 0;
 }
 

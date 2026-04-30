@@ -251,27 +251,25 @@ static int yajl_end_map(void *ctx)
     return 1;
 }
 
+static yajl_callbacks callbacks = {
+    yajl_null,
+    yajl_boolean,
+    NULL /* yajl_integer  */,
+    NULL /* yajl_double */,
+    yajl_number,
+    yajl_string,
+    yajl_start_map,
+    yajl_map_key,
+    yajl_end_map,
+    yajl_start_array,
+    yajl_end_array
+};
+
 /**
  * Initialise JSON parser.
  */
 int yajl_json_init(yajl_json_data **json, char **error_msg) {
     assert(error_msg != NULL);
-    /**
-     * yajl configuration and callbacks
-     */
-    static yajl_callbacks callbacks = {
-        yajl_null,
-        yajl_boolean,
-        NULL /* yajl_integer  */,
-        NULL /* yajl_double */,
-        yajl_number,
-        yajl_string,
-        yajl_start_map,
-        yajl_map_key,
-        yajl_end_map,
-        yajl_start_array,
-        yajl_end_array
-    };
 
     *error_msg = NULL;
 
@@ -367,6 +365,49 @@ int yajl_json_cleanup(yajl_json_data *json) {
     free(json);
 
     return 1;
+}
+
+#ifndef FILE_BUFFER_SIZE
+#define FILE_BUFFER_SIZE 10485760
+#endif
+
+int yajl_parse_file(yajl_json_data *json, const char *filename, char **error_msg) {
+    assert(json != NULL);
+    assert(filename != NULL);
+    assert(error_msg != NULL);
+
+    FILE *fp = fopen(filename, "r");
+    if (fp == NULL) {
+        *error_msg = strdup("Unable to open file");
+        return -1;
+    }
+
+    char *buf = (char *)malloc(FILE_BUFFER_SIZE);
+    if (buf == NULL) {
+        fclose(fp);
+        *error_msg = strdup("Memory allocation error");
+        return -1;
+    }
+
+    size_t len = fread(buf, 1, FILE_BUFFER_SIZE - 1, fp);
+    int too_long = !feof(fp);
+    fclose(fp);
+
+    if (too_long) {
+        free(buf);
+        *error_msg = strdup("File too long");
+        return -1;
+    }
+    if (len == 0) {
+        free(buf);
+        *error_msg = strdup("Zero bytes read from file");
+        return -1;
+    }
+    buf[len] = '\0';
+
+    int rc = yajl_json_process_chunk(json, buf, (unsigned int)len, error_msg);
+    free(buf);
+    return rc == 1 ? 0 : -1;
 }
 
 #endif

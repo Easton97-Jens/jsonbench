@@ -41,6 +41,8 @@ int yajl_json_cleanup(yajl_json_data *json);
 int yajl_json_process_chunk(yajl_json_data *json, const char *buf,
         unsigned int size, char **error_msg);
 
+int yajl_parse_file(yajl_json_data *json, const char *filename, char **error_msg);
+
 int yajl_json_cleanup(yajl_json_data *json);
 
 #endif

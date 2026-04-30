@@ -166,6 +166,10 @@ if test "$wantyajl" != "no"; then
         YAJL_VERSION="`${YAJL_CONFIG} ${YAJL_PKGNAME} --modversion`"
         if test "$verbose_output" -eq 1; then AC_MSG_NOTICE(yajl VERSION: $YAJL_VERSION); fi
         YAJL_CFLAGS="`${YAJL_CONFIG} ${YAJL_PKGNAME} --cflags`"
+        dnl Some pkg-config files (e.g. Homebrew on macOS) point -I inside the
+        dnl yajl/ subdirectory.  The source uses #include <yajl/...>, so we
+        dnl need the parent directory on the include path.
+        YAJL_CFLAGS=`echo "$YAJL_CFLAGS" | sed 's|-I\(.*\)/yajl$|-I\1|'`
         if test "$verbose_output" -eq 1; then AC_MSG_NOTICE(yajl CFLAGS: $YAJL_CFLAGS); fi
         YAJL_LDADD="`${YAJL_CONFIG} ${YAJL_PKGNAME} --libs-only-l`"
         if test "$verbose_output" -eq 1; then AC_MSG_NOTICE(yajl LDADD: $YAJL_LDADD); fi
@@ -683,7 +687,7 @@ AC_CHECK_HEADERS([time.h], [], [AC_MSG_ERROR([unable to find header time.h], 1)]
 AC_CHECK_HEADERS([math.h], [], [AC_MSG_ERROR([unable to find header math.h], 1)])
 
 # Checks for libraries.
-AC_CHECK_LIB([rt], [clock_gettime], [], AC_MSG_ERROR([librt is not installed.], 1))
+AC_SEARCH_LIBS([clock_gettime], [rt], [], [AC_MSG_ERROR([clock_gettime is not available], 1)])
 AC_CHECK_LIB([m], [powl], [], AC_MSG_ERROR([libm is not installed.], 1))
 
 # Checks for typedefs, structures, and compiler characteristics.

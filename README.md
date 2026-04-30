@@ -141,11 +141,14 @@ src/jsonbench -e SIMDJSON -s tests/test01.json
 * `-e` Select JSON engine
 * `-d` Max depth (default: 500)
 * `-a` Max arguments (default: 500)
+* `-n` Number of timed iterations (default: 1); reports mean ± stddev across all runs
 * `-s` Silent mode
 
 ---
 
 ## Example
+
+Single run:
 
 ```bash
 src/jsonbench -s -e YAJL -a 10000 tests/test06.json
@@ -154,7 +157,26 @@ src/jsonbench -s -e YAJL -a 10000 tests/test06.json
 Output:
 
 ```
-Time: 0.000092567 usec
+Time: 0.000092567 sec
+```
+
+Multiple iterations (reports mean ± stddev):
+
+```bash
+src/jsonbench -s -n 20 -e SIMDJSON -a 10000 tests/test06.json
+```
+
+Output:
+
+```
+Time: mean=0.000091234 sec  stddev=0.000002345 sec  (N=20)
+```
+
+Run the test suite:
+
+```bash
+tests/run_tests.sh           # all available engines
+tests/run_tests.sh SIMDJSON  # single engine
 ```
 
 ---

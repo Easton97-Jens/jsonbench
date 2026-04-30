@@ -6,7 +6,7 @@
 #include <deque>
 #include <string>
 
-#ifdef HAVE_RAPIDJSON
+#if HAVE_RAPIDJSON
 
 #include "pathhandler.h"
 
@@ -258,6 +258,55 @@ extern "C" int rj_set_silence(rj_parser *parser, int silence) {
 
 extern "C" int rj_parser_cleanup(rj_parser *parser) {
     parser->impl.~RJSAXHandler();
+    return 0;
+}
+
+#ifndef FILE_BUFFER_SIZE
+#define FILE_BUFFER_SIZE 10485760
+#endif
+
+extern "C" int rj_parse_file(rj_parser *parser, const char *filename, char **error_msg) {
+    if (!parser || !filename || !error_msg) return -1;
+
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        *error_msg = strdup("Unable to open file");
+        return -1;
+    }
+
+    std::vector<char> buf(FILE_BUFFER_SIZE);
+    size_t len = fread(buf.data(), 1, FILE_BUFFER_SIZE - 1, fp);
+    int read_error = ferror(fp);
+    int too_long = 0;
+    if (!read_error && len == FILE_BUFFER_SIZE - 1) {
+        char extra;
+        too_long = fread(&extra, 1, 1, fp) == 1;
+        read_error = ferror(fp);
+    }
+    fclose(fp);
+
+    if (read_error) {
+        *error_msg = strdup("Error reading file");
+        return -1;
+    }
+    if (too_long) {
+        *error_msg = strdup("File too long");
+        return -1;
+    }
+    if (len == 0) {
+        *error_msg = strdup("Zero bytes read from file");
+        return -1;
+    }
+    buf[len] = '\0';
+
+    rapidjson::StringStream ss(buf.data());
+    rapidjson::Reader reader;
+    rapidjson::ParseResult pr = reader.Parse(ss, parser->impl);
+    if (!pr) {
+        fprintf(stderr, "RapidJSON error: %s at %zu\n",
+                rapidjson::GetParseError_En(pr.Code()), pr.Offset());
+        return 2;
+    }
     return 0;
 }
 

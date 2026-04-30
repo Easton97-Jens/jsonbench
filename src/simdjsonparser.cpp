@@ -9,6 +9,7 @@
 struct simdjson_parser {
     int silence;
     simdjson::ondemand::parser parser;
+    simdjson_parser() : silence(0), parser() {}
 };
 
 static int consume_value(simdjson::ondemand::value value) {

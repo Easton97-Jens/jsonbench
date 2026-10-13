@@ -126,6 +126,22 @@ void validate_encoding(const std::string& text) {
     }
 }
 
+bool decimal_digit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+std::size_t digits_end(const std::string& token, std::size_t position) {
+    while (position < token.size() && decimal_digit(token[position])) ++position;
+    return position;
+}
+
+bool required_digits(const std::string& token, std::size_t& position) {
+    const std::size_t end = digits_end(token, position);
+    const bool present = end != position;
+    position = end;
+    return present;
+}
+
 bool valid_number(const std::string& token) {
     std::size_t i = 0;
     if (i < token.size() && token[i] == '-') ++i;
@@ -133,19 +149,16 @@ bool valid_number(const std::string& token) {
     if (token[i] == '0') ++i;
     else {
         if (token[i] < '1' || token[i] > '9') return false;
-        while (i < token.size() && token[i] >= '0' && token[i] <= '9') ++i;
+        i = digits_end(token, i);
     }
     if (i < token.size() && token[i] == '.') {
-        const std::size_t start = ++i;
-        while (i < token.size() && token[i] >= '0' && token[i] <= '9') ++i;
-        if (i == start) return false;
+        ++i;
+        if (!required_digits(token, i)) return false;
     }
     if (i < token.size() && (token[i] == 'e' || token[i] == 'E')) {
         ++i;
         if (i < token.size() && (token[i] == '+' || token[i] == '-')) ++i;
-        const std::size_t start = i;
-        while (i < token.size() && token[i] >= '0' && token[i] <= '9') ++i;
-        if (i == start) return false;
+        if (!required_digits(token, i)) return false;
     }
     return i == token.size();
 }

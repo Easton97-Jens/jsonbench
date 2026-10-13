@@ -42,6 +42,7 @@ static int cjson_scalar(void *node, dom_value *value, char **error) {
 }
 
 static const dom_adapter cjson_adapter = {cjson_kind, cjson_child, cjson_scalar};
+static const dom_input_policy cjson_policy = {DOM_NUL_FORBIDDEN, DOM_NUM_DOUBLE};
 
 int cjson_parse_file(cjson_parser *parser, const char *filename, char **error_msg) {
     char *content = NULL;
@@ -61,8 +62,8 @@ int cjson_parse_file(cjson_parser *parser, const char *filename, char **error_ms
     if (rc != 0) goto done;
     /* cJSON has no decoded string lengths and stores all numbers as doubles.
      * Reject NUL and unsafe integers instead of silently truncating/rounding. */
-    rc = dom_preflight_numbers(content, length, &parser->settings, DOM_NUL_FORBIDDEN,
-                                DOM_NUM_DOUBLE, &keys, &numbers, error_msg);
+    rc = dom_preflight_numbers(content, length, &parser->settings, &cjson_policy,
+                                &keys, &numbers, error_msg);
     if (rc != 0) goto done;
     root = cJSON_ParseWithLengthOpts(content, length + 1, &end, 1);
     if (root == NULL) {

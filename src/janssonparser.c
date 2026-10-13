@@ -53,6 +53,7 @@ static int jansson_scalar(void *node, dom_value *value, char **error) {
 }
 
 static const dom_adapter jansson_adapter = {jansson_kind, jansson_child, jansson_scalar};
+static const dom_input_policy jansson_policy = {DOM_NUL_ALLOWED, DOM_NUM_SIGNED};
 
 int jansson_parse_file(jansson_parser *parser, const char *filename, char **error_msg) {
     char *content = NULL;
@@ -70,8 +71,8 @@ int jansson_parse_file(jansson_parser *parser, const char *filename, char **erro
     if (rc != 0) return rc;
     rc = dom_read_file(filename, &content, &length, error_msg);
     if (rc != 0) goto done;
-    rc = dom_preflight_numbers(content, length, &parser->settings, DOM_NUL_ALLOWED,
-                                DOM_NUM_SIGNED, &keys, &numbers, error_msg);
+    rc = dom_preflight_numbers(content, length, &parser->settings, &jansson_policy,
+                                &keys, &numbers, error_msg);
     if (rc != 0) goto done;
     /* Native objects coalesce keys; fail explicitly instead of silently losing
      * occurrences. JSON_ALLOW_NUL preserves length-aware decoded strings. */

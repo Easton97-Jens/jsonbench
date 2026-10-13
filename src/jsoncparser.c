@@ -56,6 +56,7 @@ static int jsonc_scalar(void *node, dom_value *value, char **error) {
 }
 
 static const dom_adapter jsonc_adapter = {jsonc_kind, jsonc_child, jsonc_scalar};
+static const dom_input_policy jsonc_policy = {DOM_NUL_KEY_FORBIDDEN, DOM_NUM_INT64_UINT64};
 
 static void jsonc_unicode_escape(char *output, size_t *used, unsigned int code) {
     static const char hex[] = "0123456789abcdef";
@@ -95,7 +96,6 @@ static int jsonc_ascii_size(const char *data, size_t length, size_t *ascii_lengt
 static unsigned int jsonc_next_codepoint(const char *data, size_t *position) {
     unsigned int code = (unsigned char)data[*position];
     size_t count;
-    size_t i;
     ++*position;
     if (code < 0xe0) {
         code &= 31;
@@ -107,7 +107,7 @@ static unsigned int jsonc_next_codepoint(const char *data, size_t *position) {
         code &= 7;
         count = 3;
     }
-    for (i = 0; i < count; ++i) {
+    for (size_t i = 0; i < count; ++i) {
         code = code * 64 + ((unsigned char)data[*position] & 63);
         ++*position;
     }
@@ -141,7 +141,7 @@ static size_t jsonc_ascii_write(const char *data, size_t length, char *output) {
 
 static int jsonc_ascii_input(const char *data, size_t length, char **ascii,
                               size_t *ascii_length, char **error) {
-    size_t output_length;
+    size_t output_length = length;
     size_t used;
     char *output;
     int result = jsonc_ascii_size(data, length, &output_length, error);
@@ -160,6 +160,31 @@ static int jsonc_ascii_input(const char *data, size_t length, char **ascii,
     return 0;
 }
 
+static int jsonc_native_parse(const char *input, size_t length, unsigned int max_depth,
+                               struct json_tokener **tokener, struct json_object **root,
+                               char **error_msg) {
+    size_t end;
+    enum json_tokener_error native_error;
+    if (length >= INT_MAX) return dom_error(error_msg, "JSON-C input exceeds native API range");
+    /* The native tokener counts scalar slots as well as container frames.
+     * Bound native state allocation even when a caller sets UINT_MAX. Limits
+     * above 8192 do not remove this adapter's independent native stack cap. */
+    if (max_depth > JSON_STRING_SIZE) max_depth = JSON_STRING_SIZE;
+    *tokener = json_tokener_new_ex((int)max_depth + 1);
+    if (*tokener == NULL) return dom_error(error_msg, "Unable to allocate JSON-C tokener");
+    json_tokener_set_flags(*tokener, JSON_TOKENER_STRICT | JSON_TOKENER_VALIDATE_UTF8);
+    /* Include our sentinel so a root number at physical EOF is finalized. Raw
+     * NUL inside the actual input was rejected by the lexical boundary guard. */
+    *root = json_tokener_parse_ex(*tokener, input, (int)length + 1);
+    native_error = json_tokener_get_error(*tokener);
+    if (native_error != json_tokener_success)
+        return dom_error(error_msg, json_tokener_error_desc(native_error));
+    end = json_tokener_get_parse_end(*tokener);
+    while (end < length && dom_space((unsigned char)input[end])) ++end;
+    if (end < length) return dom_error(error_msg, "Unexpected content after JSON document");
+    return 0;
+}
+
 int jsonc_parse_file(jsonc_parser *parser, const char *filename, char **error_msg) {
     char *content = NULL;
     char *ascii = NULL;
@@ -167,7 +192,6 @@ int jsonc_parse_file(jsonc_parser *parser, const char *filename, char **error_ms
     size_t length = 0;
     size_t keys = 0;
     size_t native_keys = 0;
-    size_t end;
     dom_numbers numbers = {0};
     dom_locale_guard locale = {0};
     struct json_tokener *tokener = NULL;
@@ -181,31 +205,14 @@ int jsonc_parse_file(jsonc_parser *parser, const char *filename, char **error_ms
     if (rc != 0) return rc;
     rc = dom_read_file(filename, &content, &length, error_msg);
     if (rc != 0) goto done;
-    rc = dom_preflight_numbers(content, length, &parser->settings, DOM_NUL_KEY_FORBIDDEN,
-                                DOM_NUM_INT64_UINT64, &keys, &numbers, error_msg);
+    rc = dom_preflight_numbers(content, length, &parser->settings, &jsonc_policy,
+                                &keys, &numbers, error_msg);
     if (rc != 0) goto done;
     rc = jsonc_ascii_input(content, length, &ascii, &length, error_msg);
     if (rc != 0) goto done;
     input = ascii != NULL ? ascii : content;
-    if (length >= INT_MAX) {
-        rc = dom_error(error_msg, "JSON-C input exceeds native API range"); goto done;
-    }
-    /* The native tokener counts scalar slots as well as container frames.
-     * Bound native state allocation even when a caller sets UINT_MAX. Limits
-     * above 8192 do not remove this adapter's independent native stack cap. */
-    tokener = json_tokener_new_ex((int)(parser->settings.max_depth < JSON_STRING_SIZE ?
-                                      parser->settings.max_depth : JSON_STRING_SIZE) + 1);
-    if (tokener == NULL) { rc = dom_error(error_msg, "Unable to allocate JSON-C tokener"); goto done; }
-    json_tokener_set_flags(tokener, JSON_TOKENER_STRICT | JSON_TOKENER_VALIDATE_UTF8);
-    /* Include our sentinel so a root number at physical EOF is finalized. Raw
-     * NUL inside the actual input was rejected by the lexical boundary guard. */
-    root = json_tokener_parse_ex(tokener, input, (int)length + 1);
-    if (json_tokener_get_error(tokener) != json_tokener_success) {
-        rc = dom_error(error_msg, json_tokener_error_desc(json_tokener_get_error(tokener))); goto done;
-    }
-    end = json_tokener_get_parse_end(tokener);
-    while (end < length && dom_space((unsigned char)input[end])) ++end;
-    if (end < length) { rc = dom_error(error_msg, "Unexpected content after JSON document"); goto done; }
+    rc = jsonc_native_parse(input, length, parser->settings.max_depth, &tokener, &root, error_msg);
+    if (rc != 0) goto done;
     /* JSON-C coalesces repeated keys. Check retained vs. input key counts before
      * emitting output; reject rather than silently dropping security arguments. */
     check = parser->settings; check.silence = 1;

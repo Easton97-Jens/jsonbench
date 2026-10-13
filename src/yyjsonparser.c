@@ -49,6 +49,7 @@ static int yyjson_scalar(void *node, dom_value *value, char **error) {
 }
 
 static const dom_adapter yyjson_adapter = {yyjson_kind, yyjson_child, yyjson_scalar};
+static const dom_input_policy yyjson_policy = {DOM_NUL_ALLOWED, DOM_NUM_RAW};
 
 int yyjson_parse_file(yyjson_parser *parser, const char *filename, char **error_msg) {
     char *content = NULL;
@@ -62,8 +63,7 @@ int yyjson_parse_file(yyjson_parser *parser, const char *filename, char **error_
     if (parser == NULL || filename == NULL) return dom_error(error_msg, "Invalid yyjson parser arguments");
     rc = dom_read_file(filename, &content, &length, error_msg);
     if (rc != 0) return rc;
-    rc = dom_preflight(content, length, &parser->settings, DOM_NUL_ALLOWED,
-                        DOM_NUM_RAW, &keys, error_msg);
+    rc = dom_preflight(content, length, &parser->settings, &yyjson_policy, &keys, error_msg);
     if (rc != 0) goto done;
     /* Public native option preserves arbitrary JSON number lexemes and the
      * native object iterator retains repeated keys in original order. */

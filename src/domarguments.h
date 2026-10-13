@@ -153,9 +153,8 @@ static int dom_hex(unsigned char c) {
 static int dom_code_unit(const char *data, size_t length, size_t *position,
                           unsigned int *code) {
     unsigned int result = 0;
-    size_t i;
     if (length - *position < 4) return 0;
-    for (i = 0; i < 4; ++i) {
+    for (size_t i = 0; i < 4; ++i) {
         int digit = dom_hex((unsigned char)data[(*position)++]);
         if (digit < 0) return 0;
         result = result * 16 + (unsigned int)digit;
@@ -168,7 +167,6 @@ static int dom_code_unit(const char *data, size_t length, size_t *position,
 static int dom_utf8(const char *data, size_t length, size_t *position) {
     unsigned char first = (unsigned char)data[*position];
     size_t count;
-    size_t i;
     unsigned int code;
     unsigned int minimum;
     if (first < 0x80) { ++*position; return 1; }
@@ -177,7 +175,7 @@ static int dom_utf8(const char *data, size_t length, size_t *position) {
     else if (first >= 0xf0 && first <= 0xf4) { count = 4; code = first & 7; minimum = 0x10000; }
     else return 0;
     if (length - *position < count) return 0;
-    for (i = 1; i < count; ++i) {
+    for (size_t i = 1; i < count; ++i) {
         unsigned char byte = (unsigned char)data[*position + i];
         if ((byte & 0xc0) != 0x80) return 0;
         code = code * 64 + (byte & 63);
@@ -190,6 +188,12 @@ static int dom_utf8(const char *data, size_t length, size_t *position) {
 enum { DOM_NUL_ALLOWED = 0, DOM_NUL_KEY_FORBIDDEN = 1, DOM_NUL_FORBIDDEN = 2 };
 enum { DOM_NUM_RAW = 0, DOM_NUM_INT64_UINT64 = 1, DOM_NUM_DOUBLE = 2, DOM_NUM_SIGNED = 3 };
 enum { DOM_NOT_NUMBER = 0, DOM_INTEGER = 1, DOM_REAL = 2, DOM_ANY_NUMBER = 3 };
+
+/* Native representation limits belong together; settings hold user limits. */
+typedef struct {
+    int nul_policy;
+    int number_policy;
+} dom_input_policy;
 
 typedef struct {
     const char *data;
@@ -503,15 +507,15 @@ static int dom_scan_token(dom_scan *scan) {
 }
 
 static int dom_preflight_impl(const char *data, size_t length, const dom_settings *settings,
-                               int nul_policy, int number_policy, size_t *keys,
+                               const dom_input_policy *policy, size_t *keys,
                                dom_numbers *numbers, char **error) {
     dom_scan scan;
     memset(&scan, 0, sizeof(scan));
     scan.data = data;
     scan.length = length;
     scan.settings = settings;
-    scan.nul_policy = nul_policy;
-    scan.number_policy = number_policy;
+    scan.nul_policy = policy->nul_policy;
+    scan.number_policy = policy->number_policy;
     scan.keys = keys;
     scan.numbers = numbers;
     scan.error = error;
@@ -524,14 +528,14 @@ static int dom_preflight_impl(const char *data, size_t length, const dom_setting
 }
 
 static inline int dom_preflight(const char *data, size_t length, const dom_settings *settings,
-                                 int nul_policy, int number_policy, size_t *keys, char **error) {
+                                 const dom_input_policy *policy, size_t *keys, char **error) {
     dom_locale_guard locale = {0};
     int result;
-    if (number_policy == DOM_NUM_RAW)
-        return dom_preflight_impl(data, length, settings, nul_policy, number_policy, keys, NULL, error);
+    if (policy->number_policy == DOM_NUM_RAW)
+        return dom_preflight_impl(data, length, settings, policy, keys, NULL, error);
     result = dom_locale_begin(&locale, error);
     if (result != 0) return result;
-    result = dom_preflight_impl(data, length, settings, nul_policy, number_policy, keys, NULL, error);
+    result = dom_preflight_impl(data, length, settings, policy, keys, NULL, error);
     return dom_locale_finish(&locale, result, error);
 }
 
@@ -540,16 +544,15 @@ static inline int dom_preflight(const char *data, size_t length, const dom_setti
  * number kind and total count, including during silent validation. Native
  * range checks remain in effect, even though output avoids binary reformatting. */
 static inline int dom_preflight_numbers(const char *data, size_t length,
-                                         const dom_settings *settings, int nul_policy,
-                                         int number_policy, size_t *keys,
-                                         dom_numbers *numbers, char **error) {
+                                         const dom_settings *settings, const dom_input_policy *policy,
+                                         size_t *keys, dom_numbers *numbers, char **error) {
     dom_locale_guard locale = {0};
     int result;
-    if (number_policy == DOM_NUM_RAW)
-        return dom_preflight_impl(data, length, settings, nul_policy, number_policy, keys, numbers, error);
+    if (policy->number_policy == DOM_NUM_RAW)
+        return dom_preflight_impl(data, length, settings, policy, keys, numbers, error);
     result = dom_locale_begin(&locale, error);
     if (result != 0) return result;
-    result = dom_preflight_impl(data, length, settings, nul_policy, number_policy, keys, numbers, error);
+    result = dom_preflight_impl(data, length, settings, policy, keys, numbers, error);
     return dom_locale_finish(&locale, result, error);
 }
 
@@ -696,8 +699,7 @@ static int dom_walk_write(const dom_walk_state *state, const dom_value *value) {
         {value->data, value->length},
         {"\n", 1}
     };
-    size_t i;
-    for (i = 0; i < sizeof(parts) / sizeof(parts[0]); ++i) {
+    for (size_t i = 0; i < sizeof(parts) / sizeof(parts[0]); ++i) {
         if (parts[i].length == 0) continue;
         if (fwrite(parts[i].data, 1, parts[i].length, stdout) != parts[i].length)
             return dom_error(state->error, "Unable to write JSON argument output");
@@ -783,11 +785,9 @@ static int dom_walk_impl(void *root, const dom_adapter *adapter,
     state.object_keys = object_keys;
     state.error = error;
     *object_keys = 0;
-    while (entering) {
+    while (entering && result == 0) {
         result = dom_walk_enter(&state);
-        if (result != 0) break;
-        result = dom_walk_next(&state, &entering);
-        if (result != 0) break;
+        if (result == 0) result = dom_walk_next(&state, &entering);
     }
     return dom_walk_finish(&state, result);
 }

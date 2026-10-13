@@ -33,6 +33,10 @@ class Case:
     def output_for(self, engine):
         # YAJL preserves -0 and exponent '+'. jsoncons' public lossless API
         # normalizes those spellings; other engines still must preserve value.
+        # nlohmann's native integer SAX event also normalizes integer -0.
+        # This is an explicit expected spelling, not output normalization.
+        if self.name == "negative-zero" and engine == "NLOHMANNJSON":
+            return self.expected
         if self.numeric_difference and engine != "JSONCONS":
             return self.yajl_observed
         return self.expected

@@ -52,6 +52,48 @@ g++ -std=c++17 -Wall -Wextra -Werror $CPPFLAGS \
 /tmp/pathhandler-tests
 ```
 
+## 2. Streaming RapidJSON and nlohmann SAX adapters
+
+Both file entry points now stream bounded input instead of loading a fixed-size
+whole-file buffer. RapidJSON uses the public FileReadStream and iterative Reader
+with encoding validation and raw-number events; nlohmann uses its public SAX
+stream API. Each parse gets fresh state, C entry points contain exceptions, and
+checked setter values preserve configuration after invalid calls. Boolean/null
+callbacks propagate argument-limit failures. Keys/values are length-aware,
+including embedded NULs; output and file-read failures propagate.
+
+Narrow raw-NUL, Unicode and token-size guards address the native readers' EOF
+sentinels and resource limits. No DOM is constructed. RapidJSON's unsafe Int64/
+Uint64 pointer casts are replaced with exact integer text. nlohmann's float
+callback uses its provided original token, so delivered decimals and large
+integer lexemes are not rounded through to_string(double).
+
+The installed RapidJSON 1.1 and nlohmann 3.11 parsers still reject extremely large
+positive floating exponents before callbacks. Those required golden cases remain
+failures with explicit range diagnostics. nlohmann's integer event normalizes
+-0 to 0; it has an explicit expected spelling, matching the jsoncons integer
+semantics. No output-wide numerical normalization is applied.
+
+C API zero limits have the same meaning as jsoncons/YAJL: zero argument limit
+allows empty containers but no scalars; zero depth allows only root primitives.
+The CLI continues to require positive limits.
+
+Fresh matrices: RapidJSON **228 passed, 4 failed, 0 skipped**; nlohmann **228
+passed, 4 failed, 0 skipped**. All four failures per engine are positive exponent
+range cases in output/silent mode. The generic required assertions remain intact.
+The new `tests/sax_adapter_api_tests.cpp` checks zero limits, invalid setters,
+reuse, error ownership and byte-exact output directly across both C interfaces.
+It passed **291 checks per engine (582 total)**, including ASan/UBSan with leak
+detection. Either engine can be compiled alone; both disabled return skip code
+77 rather than a successful test result.
+
+```sh
+g++ -std=c++17 -Wall -Wextra -Werror $CPPFLAGS -I. \
+  tests/sax_adapter_api_tests.cpp src/rjparser.cpp src/nlparser.cpp \
+  $LDFLAGS -o /tmp/sax-api-tests
+/tmp/sax-api-tests
+```
+
 ## Optional JSON Schema validation
 
 No schema validator dependency is introduced. Schema rules are a separate

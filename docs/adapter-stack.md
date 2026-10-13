@@ -198,6 +198,11 @@ timing loop by the actual allocation size. YAJL's private state is grouped inlin
 without an extra allocation. Native validation and path helpers have simpler
 control flow and shared initialization where behavior is identical.
 
+JsonCpp and simdjson share their identical scalar argument-emission helper:
+length-aware path/value checks, argument counting, silence and checked output.
+Their native parsers, traversal, depth ceilings and range checks remain in the
+individual adapters.
+
 RapidJSON's fresh reader owns one bounded vector scratch arena for token bytes
 and parser state. Reallocation preserves bytes and checks the budget and scalar
 alignment; the allocator releases its storage when the reader is destroyed.

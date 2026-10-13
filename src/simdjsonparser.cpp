@@ -2,7 +2,7 @@
 
 #if HAVE_SIMDJSON
 
-#include "pathhandler.h"
+#include "cpparguments.h"
 #include <simdjson.h>
 #include <climits>
 #include <cmath>
@@ -62,19 +62,8 @@ class Arguments {
     }
 
     void emit(std::string_view value) {
-        const std::string name = path_.name();
-        check_path();
-        if (value.size() >= JSON_STRING_SIZE)
-            throw std::length_error("Argument value too long");
-        if (count_ >= settings_.max_args)
-            throw std::length_error("Argument number limit exceeded");
-        ++count_;
-        if (settings_.silence) return;
-        if (std::fwrite(name.data(), 1, name.size(), stdout) != name.size() ||
-            std::fwrite(": ", 1, 2, stdout) != 2 ||
-            std::fwrite(value.data(), 1, value.size(), stdout) != value.size() ||
-            std::fputc('\n', stdout) == EOF)
-            throw ParserError("Unable to write JSON argument output");
+        jsonbench::emit_argument<ParserError>(count_, settings_.max_args,
+            settings_.silence, path_, value);
     }
 
   public:

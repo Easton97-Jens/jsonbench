@@ -35,6 +35,7 @@ jsonbench_LDADD = $(YAJL_LDADD) $(JANSSON_LDADD) $(JSONC_LDADD) \
 # Jansson must precede JSON-C for overlapping unversioned object APIs.
 # JSON-C traversal uses linkhash to avoid ambiguous iterator calls.
 noinst_HEADERS = cjsonparser.h \
+    cpparguments.h \
     domarguments.h \
     glazeparser.h \
     janssonparser.h \

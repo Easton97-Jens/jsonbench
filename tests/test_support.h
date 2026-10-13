@@ -1,6 +1,8 @@
 #ifndef JSONBENCH_TEST_SUPPORT_H
 #define JSONBENCH_TEST_SUPPORT_H
 
+#include "test_c_memory.h"
+
 #include <array>
 #include <cerrno>
 #include <cstdio>
@@ -18,7 +20,9 @@
 namespace jsonbench::test {
 
 inline constexpr auto close_c_file = [](FILE* file) noexcept { std::fclose(file); };
-inline constexpr auto free_c_diagnostic = [](char* value) noexcept { std::free(value); };
+inline constexpr auto free_c_diagnostic = [](char* value) noexcept {
+    jsonbench_test_release_diagnostic(value);
+};
 
 class TestError final : public std::runtime_error {
   public:

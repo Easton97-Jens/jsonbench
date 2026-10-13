@@ -64,13 +64,9 @@ int jansson_parse_file(jansson_parser *parser, const char *filename, char **erro
     json_error_t native_error;
     json_t *root = NULL;
     int rc;
-    if (error_msg == NULL) return -1;
-    *error_msg = NULL;
-    if (parser == NULL || filename == NULL) return dom_error(error_msg, "Invalid Jansson parser arguments");
-    rc = dom_locale_begin(&locale, error_msg);
+    rc = dom_begin_numeric_file(parser, filename, "Invalid Jansson parser arguments",
+                                  &locale, &content, &length, error_msg);
     if (rc != 0) return rc;
-    rc = dom_read_file(filename, &content, &length, error_msg);
-    if (rc != 0) goto done;
     rc = dom_preflight_numbers(content, length, &parser->settings, &jansson_policy,
                                 &keys, &numbers, error_msg);
     if (rc != 0) goto done;

@@ -94,6 +94,12 @@ installed; that subcheck reports an explicit skip otherwise. The C++ harness
 preserves the simdjson safety ceiling regression: 512 containers accepted with
 an enlarged configured limit, 513/999/2000 rejected diagnostically.
 
+The five C++ harnesses share `test_support.h` for private fixture directories,
+file descriptors, captured output and diagnostic ownership. Their RAII deleter
+calls the C-compiled `test_c_memory.c` bridge to release C/POSIX-allocated
+diagnostics with the matching allocator. Automake builds and links this helper;
+standalone C++ harness commands must also link its C object as shown above.
+
 These API tests target the configured source tree, independently of a
 `JSONBENCH_BINARY` override. Missing engines return 77 and Automake reports
 SKIP; enabled compilation or test failures remain failures. CLI required tests

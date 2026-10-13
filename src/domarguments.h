@@ -139,6 +139,23 @@ static int dom_read_file(const char *filename, char **content, size_t *length,
     return 0;
 }
 
+/* Numeric DOM libraries need the same argument validation, file input, and
+ * thread-locale lifetime. Native parsing and native resource cleanup stay in
+ * their adapters. A read failure restores the locale before returning. */
+static inline int dom_begin_numeric_file(const void *parser, const char *filename,
+                                          const char *invalid_message, dom_locale_guard *locale,
+                                          char **content, size_t *length, char **error) {
+    int result;
+    if (error == NULL) return -1;
+    *error = NULL;
+    if (parser == NULL || filename == NULL) return dom_error(error, invalid_message);
+    result = dom_locale_begin(locale, error);
+    if (result != 0) return result;
+    result = dom_read_file(filename, content, length, error);
+    if (result != 0) return dom_locale_finish(locale, result, error);
+    return 0;
+}
+
 static int dom_space(unsigned char c) {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }

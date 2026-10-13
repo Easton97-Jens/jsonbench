@@ -8,19 +8,19 @@ AM_CXXFLAGS = -Wall -std=c++17
 check_PROGRAMS = pathhandler_tests jsoncons_api_tests yajl_api_tests \
                  sax_adapter_api_tests dom_adapter_api_tests cpp_adapter_api_tests
 TESTS = $(check_PROGRAMS)
-noinst_HEADERS = test_support.h
+noinst_HEADERS = test_support.h test_c_memory.h
 
-pathhandler_tests_SOURCES = pathhandler_tests.cpp
+pathhandler_tests_SOURCES = pathhandler_tests.cpp test_c_memory.c
 
-jsoncons_api_tests_SOURCES = jsoncons_api_tests.cpp ../src/jsonconsparser.cpp
+jsoncons_api_tests_SOURCES = jsoncons_api_tests.cpp test_c_memory.c ../src/jsonconsparser.cpp
 jsoncons_api_tests_CPPFLAGS = $(AM_CPPFLAGS)
 
-yajl_api_tests_SOURCES = yajl_api_tests.cpp ../src/yajlparser.c
+yajl_api_tests_SOURCES = yajl_api_tests.cpp test_c_memory.c ../src/yajlparser.c
 yajl_api_tests_CPPFLAGS = $(AM_CPPFLAGS) $(YAJL_CFLAGS)
 yajl_api_tests_LDFLAGS = $(YAJL_LDFLAGS)
 yajl_api_tests_LDADD = $(YAJL_LDADD)
 
-sax_adapter_api_tests_SOURCES = sax_adapter_api_tests.cpp \
+sax_adapter_api_tests_SOURCES = sax_adapter_api_tests.cpp test_c_memory.c \
                                 ../src/rjparser.cpp ../src/nlparser.cpp
 sax_adapter_api_tests_CPPFLAGS = $(AM_CPPFLAGS)
 
@@ -35,7 +35,7 @@ dom_adapter_api_tests_LDFLAGS = $(JANSSON_LDFLAGS) $(JSONC_LDFLAGS) \
 dom_adapter_api_tests_LDADD = $(JANSSON_LDADD) $(JSONC_LDADD) \
                             $(CJSON_LDADD) $(YYJSON_LDADD) -lm
 
-cpp_adapter_api_tests_SOURCES = cpp_adapter_api_tests.cpp \
+cpp_adapter_api_tests_SOURCES = cpp_adapter_api_tests.cpp test_c_memory.c \
                                 ../src/jsoncppparser.cpp ../src/simdjsonparser.cpp
 cpp_adapter_api_tests_CPPFLAGS = $(AM_CPPFLAGS) $(JSONCPP_CFLAGS) $(SIMDJSON_CFLAGS)
 cpp_adapter_api_tests_LDFLAGS = $(JSONCPP_LDFLAGS) $(SIMDJSON_LDFLAGS)

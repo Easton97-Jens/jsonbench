@@ -43,12 +43,15 @@ source /workspace/.jsonbench-tools/activate.sh
 ./autogen.sh && ./configure && make -j2
 tests/run_tests.sh YAJL
 # Standalone public API checks (use the configured include/link flags):
+gcc -std=gnu11 -Wall -Wextra -Werror -c tests/test_c_memory.c \
+  -o /tmp/jsonbench-test-c-memory.o
 gcc -std=gnu11 -Wall -Wextra -Werror $CPPFLAGS -c src/yajlparser.c -o /tmp/yajl.o
 g++ -std=c++17 -Wall -Wextra -Werror $CPPFLAGS \
-  tests/yajl_api_tests.cpp /tmp/yajl.o $LDFLAGS -lyajl -o /tmp/yajl-api-tests
+  tests/yajl_api_tests.cpp /tmp/yajl.o /tmp/jsonbench-test-c-memory.o \
+  $LDFLAGS -lyajl -o /tmp/yajl-api-tests
 /tmp/yajl-api-tests
 g++ -std=c++17 -Wall -Wextra -Werror $CPPFLAGS \
-  tests/pathhandler_tests.cpp -o /tmp/pathhandler-tests
+  tests/pathhandler_tests.cpp /tmp/jsonbench-test-c-memory.o -o /tmp/pathhandler-tests
 /tmp/pathhandler-tests
 ```
 
@@ -90,7 +93,7 @@ detection. Either engine can be compiled alone; both disabled return skip code
 ```sh
 g++ -std=c++17 -Wall -Wextra -Werror $CPPFLAGS -I. \
   tests/sax_adapter_api_tests.cpp src/rjparser.cpp src/nlparser.cpp \
-  $LDFLAGS -o /tmp/sax-api-tests
+  /tmp/jsonbench-test-c-memory.o $LDFLAGS -o /tmp/sax-api-tests
 /tmp/sax-api-tests
 ```
 
@@ -150,23 +153,23 @@ all native representation limitations visible:
 
 | Engine | Passed | Failed | Remaining required failures |
 | --- | ---: | ---: | --- |
-| YAJL | 235 | 0 | None |
-| RapidJSON | 231 | 4 | Extreme positive floating exponents |
-| nlohmann | 231 | 4 | Extreme positive floating exponents |
-| JSON-C | 225 | 10 | Duplicate keys, NUL keys, native numeric ranges |
-| Jansson | 225 | 10 | Duplicate keys, NUL keys, native numeric ranges |
-| cJSON | 227 | 8 | Decoded NUL, native numeric ranges |
-| JsonCpp | 233 | 2 | Duplicate keys |
-| jsoncons | 235 | 0 | None |
-| simdjson | 229 | 6 | Native integer/floating ranges |
-| yyjson | 235 | 0 | None |
+| YAJL | 242 | 0 | None |
+| RapidJSON | 238 | 4 | Extreme positive floating exponents |
+| nlohmann | 238 | 4 | Extreme positive floating exponents |
+| JSON-C | 232 | 10 | Duplicate keys, NUL keys, native numeric ranges |
+| Jansson | 232 | 10 | Duplicate keys, NUL keys, native numeric ranges |
+| cJSON | 234 | 8 | Decoded NUL, native numeric ranges |
+| JsonCpp | 240 | 2 | Duplicate keys |
+| jsoncons | 242 | 0 | None |
+| simdjson | 236 | 6 | Native integer/floating ranges |
+| yyjson | 242 | 0 | None |
 
 Each failing valid case is tested in output and silent mode. Unsupported ranges
 produce diagnostics, with no silent integer rounding. Assertions are unchanged
-for the required contract. There were **2339 passes, 44 failures, 0 skips**, plus
+for the required contract. There were **2409 passes, 44 failures, 0 skips**, plus
 **2 separately checked numeric spelling differences**. This includes 33 exact
-jsoncons/YAJL comparisons. `tests/run_tests.sh JSONCONS` returned 0 with **268
-passes, 0 failures, 0 skips, 2 differences**; the YAJL run returned 0 with **235
+jsoncons/YAJL comparisons. `tests/run_tests.sh JSONCONS` returned 0 with **275
+passes, 0 failures, 0 skips, 2 differences**; the YAJL run returned 0 with **242
 passes**. No crash or timeout was reported.
 
 `make check` runs the six direct API/path harnesses. They contain 181 PathHandler,
@@ -183,11 +186,43 @@ rejections for hidden reports, as a native rejection and a sanitizer can both
 exit nonzero. The sanitizer run used O1, frame pointers, non-PIE executables,
 leak detection, and all ten available engines.
 
+## Sonar corrections and retained API advisories
+
+Automatic C-family analysis is configured to report recommendations for C++17,
+matching the build, rather than facilities from later standards. No rules,
+source files or required regression assertions are excluded. Shared test RAII
+owns private fixture directories, descriptors, captured output and diagnostic
+strings; a C-compiled helper releases C/POSIX diagnostics with their matching
+allocator. The CLI validates iteration counts before allocation and bounds its
+timing loop by the actual allocation size. YAJL's private state is grouped inline
+without an extra allocation. Native validation and path helpers have simpler
+control flow and shared initialization where behavior is identical.
+
+RapidJSON's fresh reader owns one bounded vector scratch arena for token bytes
+and parser state. Reallocation preserves bytes and checks the budget and scalar
+alignment; the allocator releases its storage when the reader is destroyed.
+This follows RapidJSON's allocator lifetime rather than exposing raw ownership
+to callers. The public C-compatible parser function types remain unchanged.
+
+Four const recommendations are intentionally retained after the user's explicit
+compatibility decision: `rj_parse_buffer`, `rj_parse_file`, `rj_parser_cleanup`
+and `nl_parser_cleanup`. Adding `const` to their parser pointer parameters would
+change the exact function types and break callers that use existing typed
+function pointers, even though direct calls and C symbol names would still work.
+These findings are documented, not suppressed or marked accepted in Sonar.
+
+Verification uses the existing GitHub SonarQube Cloud checks for
+`Easton97-Jens_jsonbench`. The environment cannot access the direct Sonar API,
+so this does not certify a complete project-wide issue inventory. Cloud checks
+report 0% coverage because these independently executed tests are not imported
+as line coverage; 5,779 passing assertions do not establish a coverage percentage.
+
 ## Measured jsoncons/YAJL comparison
 
-The benchmark helper now attempts every requested YAJL input size. With five
-fresh-process samples after one warmup per variant, the current binary and the
-preserved original DOM executable produced:
+The benchmark helper attempts every requested YAJL input size. These measurements
+are from the integrated adapter snapshot `e6fe3a3`, before the subsequent Sonar
+corrections. With five fresh-process samples after one warmup per variant, that
+binary and the preserved original DOM executable produced:
 
 | Input | Original jsoncons DOM (ms / KiB RSS) | jsoncons SAX (ms / KiB RSS) | YAJL streaming (ms / KiB RSS) |
 | --- | --- | --- | --- |

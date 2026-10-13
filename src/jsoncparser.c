@@ -198,13 +198,9 @@ int jsonc_parse_file(jsonc_parser *parser, const char *filename, char **error_ms
     struct json_object *root = NULL;
     dom_settings check;
     int rc;
-    if (error_msg == NULL) return -1;
-    *error_msg = NULL;
-    if (parser == NULL || filename == NULL) return dom_error(error_msg, "Invalid JSON-C parser arguments");
-    rc = dom_locale_begin(&locale, error_msg);
+    rc = dom_begin_numeric_file(parser, filename, "Invalid JSON-C parser arguments",
+                                  &locale, &content, &length, error_msg);
     if (rc != 0) return rc;
-    rc = dom_read_file(filename, &content, &length, error_msg);
-    if (rc != 0) goto done;
     rc = dom_preflight_numbers(content, length, &parser->settings, &jsonc_policy,
                                 &keys, &numbers, error_msg);
     if (rc != 0) goto done;

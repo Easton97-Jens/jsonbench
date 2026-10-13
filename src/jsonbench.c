@@ -277,13 +277,20 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             yajl_json_data *json = NULL;
+            rc = 1;
             yajl_json_init(&json, &error_msg);
             if (json != NULL) {
                 json->depth_limit   = depth_limit;
                 json->arg_num_limit = arg_limit;
                 json->silence       = 0;
-                yajl_parse_file(json, jsonfile, &error_msg);
+                rc = yajl_parse_file(json, jsonfile, &error_msg);
                 yajl_json_cleanup(json);
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }
@@ -331,13 +338,20 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             rj_parser *json = NULL;
+            rc = 1;
             rj_json_init(&json, &error_msg);
             if (json != NULL) {
                 rj_set_max_depth(json, depth_limit);
                 rj_set_max_arg_num(json, arg_limit);
                 rj_set_silence(json, 0);
-                rj_parse_file(json, jsonfile, &error_msg);
+                rc = rj_parse_file(json, jsonfile, &error_msg);
                 rj_json_cleanup(json);
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }
@@ -385,13 +399,20 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             nl_parser *json = NULL;
+            rc = 1;
             nl_json_init(&json, &error_msg);
             if (json != NULL) {
                 nl_set_max_depth(json, depth_limit);
                 nl_set_max_arg_num(json, arg_limit);
                 nl_set_silence(json, 0);
-                nl_parse_file(json, jsonfile, &error_msg);
+                rc = nl_parse_file(json, jsonfile, &error_msg);
                 nl_json_cleanup(json);
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }
@@ -463,13 +484,20 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             jsonc_parser *json = NULL;
+            rc = 1;
             jsonc_json_init(&json, &error_msg);
             if (json != NULL) {
                 jsonc_set_max_depth(json, depth_limit);
                 jsonc_set_max_arg_num(json, arg_limit);
                 jsonc_set_silence(json, 0);
-                jsonc_parse_file(json, jsonfile, &error_msg);
+                rc = jsonc_parse_file(json, jsonfile, &error_msg);
                 jsonc_json_cleanup(json);
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }
@@ -541,13 +569,20 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             jansson_parser *json = NULL;
+            rc = 1;
             jansson_json_init(&json, &error_msg);
             if (json != NULL) {
                 jansson_set_max_depth(json, depth_limit);
                 jansson_set_max_arg_num(json, arg_limit);
                 jansson_set_silence(json, 0);
-                jansson_parse_file(json, jsonfile, &error_msg);
+                rc = jansson_parse_file(json, jsonfile, &error_msg);
                 jansson_json_cleanup(json);
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }
@@ -619,13 +654,20 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             cjson_parser *json = NULL;
+            rc = 1;
             cjson_json_init(&json, &error_msg);
             if (json != NULL) {
                 cjson_set_max_depth(json, depth_limit);
                 cjson_set_max_arg_num(json, arg_limit);
                 cjson_set_silence(json, 0);
-                cjson_parse_file(json, jsonfile, &error_msg);
+                rc = cjson_parse_file(json, jsonfile, &error_msg);
                 cjson_json_cleanup(json);
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }
@@ -697,13 +739,20 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             jsoncpp_parser *json = NULL;
+            rc = 1;
             jsoncpp_json_init(&json, &error_msg);
             if (json != NULL) {
                 jsoncpp_set_max_depth(json, depth_limit);
                 jsoncpp_set_max_arg_num(json, arg_limit);
                 jsoncpp_set_silence(json, 0);
-                jsoncpp_parse_file(json, jsonfile, &error_msg);
+                rc = jsoncpp_parse_file(json, jsonfile, &error_msg);
                 jsoncpp_json_cleanup(json);
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }
@@ -861,13 +910,20 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             simdjson_parser *json = NULL;
+            rc = 1;
             simdjson_json_init(&json, &error_msg);
             if (json != NULL) {
                 simdjson_set_max_depth(json, depth_limit);
                 simdjson_set_max_arg_num(json, arg_limit);
                 simdjson_set_silence(json, 0);
-                simdjson_parse_file(json, jsonfile, &error_msg);
+                rc = simdjson_parse_file(json, jsonfile, &error_msg);
                 simdjson_json_cleanup(json);
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }
@@ -939,13 +995,20 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             yyjson_parser *json = NULL;
+            rc = 1;
             yyjson_json_init(&json, &error_msg);
             if (json != NULL) {
                 yyjson_set_max_depth(json, depth_limit);
                 yyjson_set_max_arg_num(json, arg_limit);
                 yyjson_set_silence(json, 0);
-                yyjson_parse_file(json, jsonfile, &error_msg);
+                rc = yyjson_parse_file(json, jsonfile, &error_msg);
                 yyjson_json_cleanup(json);
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }
@@ -1017,13 +1080,20 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             glaze_parser *json = NULL;
+            rc = 1;
             glaze_json_init(&json, &error_msg);
             if (json != NULL) {
                 glaze_set_max_depth(json, depth_limit);
                 glaze_set_max_arg_num(json, arg_limit);
                 glaze_set_silence(json, 0);
-                glaze_parse_file(json, jsonfile, &error_msg);
+                rc = glaze_parse_file(json, jsonfile, &error_msg);
                 glaze_json_cleanup(json);
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }
@@ -1031,5 +1101,9 @@ int main(int argc, char ** argv) {
 
     free(times);
     free(jsonengine);
+    if (fflush(stdout) != 0) {
+        fprintf(stderr, "Error: Unable to write benchmark output\n");
+        return EXIT_FAILURE;
+    }
     return 0;
 }

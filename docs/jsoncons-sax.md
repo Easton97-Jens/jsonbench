@@ -1,5 +1,8 @@
 # jsoncons SAX evaluation
 
+This document records the original jsoncons/test PR snapshot. Subsequent parser
+changes and current verification are documented in [the follow-up stack](adapter-stack.md).
+
 This change implements the parser evaluation requested in
 [ModSecurity issue #3308](https://github.com/owasp-modsecurity/ModSecurity/issues/3308#issuecomment-6142615388).
 It does not change ModSecurity or claim integration compatibility with its complete request-body processor.

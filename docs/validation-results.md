@@ -1,5 +1,8 @@
 # Validation results
 
+This document records the original jsoncons/test PR snapshot. Subsequent parser
+changes and current verification are documented in [the follow-up stack](adapter-stack.md).
+
 Validated in `/workspace/digitalwave-jsonbench` based on upstream commit
 `a89f2e93fb7f1415095d6fb6c1bb5fab6bdc8e6d`. The previous onboarding fork in
 `/workspace/jsonbench` was left unchanged. Platform: Debian 13 amd64, GCC 14.2,

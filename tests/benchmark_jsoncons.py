@@ -207,7 +207,7 @@ def main():
                          "timing": "CLI parser elapsed seconds; independent fresh processes after warmups",
                          "rss": "Linux wait4 child peak RSS in KiB via a small compiled C launcher",
                          "file_buffer_size": file_buffer_size,
-                         "yajl_maximum_file_bytes": file_buffer_size - 1,
+                         "yajl_input": "attempt every requested size; streaming adapters have no FILE_BUFFER_SIZE file cap",
                          "compiler": compiler,
                          "caveat": "Original DOM adapter only parses/discards a DOM. SAX also builds argument paths and enforces argument/size limits. Synthetic cached-file workload; no ModSecurity performance conclusion."},
               "inputs": [], "runs": []}
@@ -236,9 +236,6 @@ def main():
             if "YAJL" not in engines:
                 report["runs"].append({"variant": "yajl", "input_bytes": info["bytes"],
                                        "status": "skipped", "reason": "YAJL is unavailable in the configured binary"})
-            elif info["bytes"] > file_buffer_size - 1:
-                report["runs"].append({"variant": "yajl", "input_bytes": info["bytes"],
-                                       "status": "skipped", "reason": f"input exceeds configured YAJL file limit of {file_buffer_size - 1} bytes"})
             else:
                 variants.append(("yajl", binary, "YAJL"))
 

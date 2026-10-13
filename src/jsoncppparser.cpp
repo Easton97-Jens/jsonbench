@@ -277,8 +277,8 @@ extern "C" int jsoncpp_parse_file(jsoncpp_parser *parser, const char *filename, 
             std::min<unsigned int>(parser->max_depth, 1023) + 1);
         std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
         Json::Value root;
-        std::string errors;
-        if (!reader->parse(input.data(), input.data() + input.size(), &root, &errors))
+        if (std::string errors;
+                !reader->parse(input.data(), input.data() + input.size(), &root, &errors))
             throw std::invalid_argument(errors);
         Arguments(*parser, input).visit(root);
         if (!parser->silence && std::fflush(stdout) == EOF)

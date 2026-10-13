@@ -28,6 +28,11 @@ namespace {
 
 using nljson = nlohmann::json;
 
+class NlohmannInputError final : public std::runtime_error {
+  public:
+    using std::runtime_error::runtime_error;
+};
+
 // The public SAX API still materializes individual strings and number tokens.
 // Guard their raw size before the lexer can allocate an unbounded token. Six
 // source bytes per decoded byte allow legal \uXXXX escapes at the value limit.
@@ -48,7 +53,7 @@ class CheckedInputBuffer final : public std::streambuf {
     }
 
     void check(unsigned char c) {
-        if (c == 0) throw std::invalid_argument("Invalid raw NUL in JSON input");
+        if (c == 0) throw NlohmannInputError("Invalid raw NUL in JSON input");
         if (in_string_) {
             if (!escaped_ && c == '"') {
                 in_string_ = false;
@@ -56,7 +61,7 @@ class CheckedInputBuffer final : public std::streambuf {
                 return;
             }
             if (++token_length_ > static_cast<std::size_t>(JSON_STRING_SIZE) * 6)
-                throw std::length_error("JSON string token too long");
+                throw NlohmannInputError("JSON string token too long");
             if (escaped_) escaped_ = false;
             else if (c == '\\') escaped_ = true;
             return;
@@ -64,7 +69,7 @@ class CheckedInputBuffer final : public std::streambuf {
         if (in_number_) {
             if (number_character(c)) {
                 if (++token_length_ >= JSON_STRING_SIZE)
-                    throw std::length_error("JSON number token too long");
+                    throw NlohmannInputError("JSON number token too long");
                 return;
             }
             in_number_ = false;
@@ -83,7 +88,7 @@ class CheckedInputBuffer final : public std::streambuf {
         std::size_t count;
         if (file_) {
             count = std::fread(buffer_.data(), 1, buffer_.size(), file_);
-            if (std::ferror(file_)) throw std::runtime_error("Error reading JSON file");
+            if (std::ferror(file_)) throw NlohmannInputError("Error reading JSON file");
         } else {
             count = remaining_ < buffer_.size() ? remaining_ : buffer_.size();
             if (count != 0) std::memcpy(buffer_.data(), memory_, count);
@@ -138,7 +143,6 @@ class NLSAXHandler final : public nlohmann::json_sax<nljson> {
         const std::string name = path_.name();
         if (path_.m_error) return fail("Argument name too long");
         if (value.size() >= JSON_STRING_SIZE) return fail("Argument value too long");
-        // Unlimited argument mode must not wrap the counter on enormous input.
         ++arguments_;
         if (settings_.silence) return true;
         if (std::fwrite(name.data(), 1, name.size(), stdout) != name.size() ||
@@ -199,23 +203,39 @@ struct FileCloser {
     void operator()(std::FILE* file) const noexcept { std::fclose(file); }
 };
 
-int parse(nl_parser* parser, CheckedInputBuffer& source, char** error_msg) {
+int parse(const nl_parser* parser, CheckedInputBuffer& source, char** error_msg) {
+    // A fresh visitor keeps failed or completed documents from carrying
+    // depth, argument counts, errors or paths into a subsequent parse.
+    NLSAXHandler handler(*parser);
+    std::istream input(&source);
+    const bool ok = nljson::sax_parse(input, &handler,
+        nljson::input_format_t::json, true, false);
+    if (!ok) return fail(error_msg, handler.error().empty() ?
+        "NlohmannJSON parsing failed" : handler.error().c_str());
+    if (!parser->silence && std::fflush(stdout) != 0)
+        return fail(error_msg, "Unable to write JSON argument output");
+    return 0;
+}
+
+// Specific handlers preserve diagnostics while the final guard protects the
+// C interface from unexpected exceptions originating in third-party code.
+template <typename Operation>
+int at_c_boundary(Operation&& operation, char** error_msg, int failure_status = 2) noexcept {
     try {
-        // A fresh visitor keeps failed or completed documents from carrying
-        // depth, argument counts, errors or paths into a subsequent parse.
-        NLSAXHandler handler(*parser);
-        std::istream input(&source);
-        const bool ok = nljson::sax_parse(input, &handler,
-            nljson::input_format_t::json, true, false);
-        if (!ok) return fail(error_msg, handler.error().empty() ?
-            "NlohmannJSON parsing failed" : handler.error().c_str());
-        if (!parser->silence && std::fflush(stdout) != 0)
-            return fail(error_msg, "Unable to write JSON argument output");
-        return 0;
-    } catch (const std::exception& error) {
-        return fail(error_msg, error.what());
+        return operation();
+    } catch (const NlohmannInputError& error) {
+        return fail(error_msg, error.what(), failure_status);
+    } catch (const nljson::exception& error) {
+        return fail(error_msg, error.what(), failure_status);
+    } catch (const std::bad_alloc& error) {
+        return fail(error_msg, error.what(), failure_status);
+    } catch (const std::length_error& error) {
+        return fail(error_msg, error.what(), failure_status);
+    } catch (const std::ios_base::failure& error) {
+        return fail(error_msg, error.what(), failure_status);
     } catch (...) {
-        return fail(error_msg, "Unexpected NlohmannJSON parser failure");
+        // Never allow an unknown third-party exception to cross the C ABI.
+        return fail(error_msg, "Unexpected NlohmannJSON parser failure", failure_status);
     }
 }
 
@@ -225,18 +245,14 @@ extern "C" int nl_json_init(nl_parser** parser, char** error_msg) {
     if (error_msg) *error_msg = nullptr;
     if (parser) *parser = nullptr;
     if (!parser || !error_msg) return -1;
-    try {
-        *parser = new nl_parser;
+    return at_c_boundary([&] {
+        *parser = std::make_unique<nl_parser>().release();
         return 0;
-    } catch (const std::exception& error) {
-        return fail(error_msg, error.what(), -1);
-    } catch (...) {
-        return fail(error_msg, "Unable to initialize NlohmannJSON parser", -1);
-    }
+    }, error_msg, -1);
 }
 
 extern "C" int nl_json_cleanup(nl_parser* parser) {
-    delete parser;
+    const std::unique_ptr<nl_parser> owned(parser);
     return 0;
 }
 
@@ -245,30 +261,22 @@ extern "C" int nl_parse_buffer(nl_parser* parser, const char* buffer,
     if (error_msg) *error_msg = nullptr;
     if (!parser || !buffer || !error_msg)
         return fail(error_msg, "Invalid NlohmannJSON parser arguments", -1);
-    try {
+    return at_c_boundary([&] {
         CheckedInputBuffer source(buffer, length);
         return parse(parser, source, error_msg);
-    } catch (const std::exception& error) {
-        return fail(error_msg, error.what());
-    } catch (...) {
-        return fail(error_msg, "Unexpected NlohmannJSON parser failure");
-    }
+    }, error_msg);
 }
 
 extern "C" int nl_parse_file(nl_parser* parser, const char* filename, char** error_msg) {
     if (error_msg) *error_msg = nullptr;
     if (!parser || !filename || !error_msg)
         return fail(error_msg, "Invalid NlohmannJSON parser arguments", -1);
-    try {
-        std::unique_ptr<std::FILE, FileCloser> file(std::fopen(filename, "rb"));
+    return at_c_boundary([&] {
+        const std::unique_ptr<std::FILE, FileCloser> file(std::fopen(filename, "rb"));
         if (!file) return fail(error_msg, "Unable to open JSON file", -1);
         CheckedInputBuffer source(file.get());
         return parse(parser, source, error_msg);
-    } catch (const std::exception& error) {
-        return fail(error_msg, error.what());
-    } catch (...) {
-        return fail(error_msg, "Unexpected NlohmannJSON parser failure");
-    }
+    }, error_msg);
 }
 
 extern "C" int nl_set_max_depth(nl_parser* parser, double value) {

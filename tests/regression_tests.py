@@ -372,6 +372,8 @@ class Suite:
         for option in ("-d", "-a"):
             for value in ("-1", "abc", "1x", "1.5", "4294967296", "0"):
                 self.rejected(engine, f"CLI rejects {option} {value}", path, [option, value])
+        for value in ("-1", "abc", "1x", "1.5", "2147483648", "4294967297", "0"):
+            self.rejected(engine, f"CLI rejects -n {value}", path, ["-n", value])
         if Path("/dev/full").exists():
             for iterations in (1, 2):
                 with open("/dev/full", "wb") as output:

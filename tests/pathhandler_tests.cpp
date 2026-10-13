@@ -1,44 +1,35 @@
 // Public path-builder contracts shared by SAX adapters. These tests do not
 // depend on private stack layout or one particular parser implementation.
 #include "../src/pathhandler.h"
+#include "test_support.h"
 
+#include <array>
 #include <cstdio>
 #include <cstring>
-#include <stdexcept>
+#include <exception>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
-class Checks {
-    unsigned int total_ = 0;
-    unsigned int failures_ = 0;
+class Checks : public jsonbench::test::TestChecks {
   public:
-    void check(const std::string& name, bool passed) {
-        ++total_;
-        if (!passed) {
-            ++failures_;
-            std::fprintf(stderr, "FAIL: %s\n", name.c_str());
-        }
-    }
-    void path(const std::string& label, PathHandler& handler, const std::string& expected) {
-        check(label + ": byte-exact name", handler.name() == expected);
-        check(label + ": no path error", !handler.m_error);
+    void path(std::string_view label, PathHandler& handler, std::string_view expected) {
+        check(std::string(label) + ": byte-exact name", handler.name() == expected);
+        check(std::string(label) + ": no path error", !handler.m_error);
         // Both NUL terminators and bytes beyond the declared destination size
         // matter: oversized writes must not corrupt adjacent memory.
         std::vector<char> buffer(JSON_STRING_SIZE + 16, '#');
         handler.buildArgName(buffer.data() + 8);
-        check(label + ": legacy output bytes", std::memcmp(buffer.data() + 8,
+        check(std::string(label) + ": legacy output bytes", std::memcmp(buffer.data() + 8,
             expected.data(), expected.size()) == 0);
-        check(label + ": legacy output terminator", buffer[8 + expected.size()] == '\0');
+        check(std::string(label) + ": legacy output terminator", buffer[8 + expected.size()] == '\0');
         bool canaries = true;
         for (unsigned int i = 0; i < 8; ++i)
             canaries = canaries && buffer[i] == '#' && buffer[JSON_STRING_SIZE + 8 + i] == '#';
-        check(label + ": destination canaries unchanged", canaries);
+        check(std::string(label) + ": destination canaries unchanged", canaries);
     }
-    int finish() const {
-        std::printf("PathHandler: %u checks passed, %u failed\n", total_ - failures_, failures_);
-        return failures_ ? 1 : 0;
-    }
+    int finish() const { return report("PathHandler"); }
 };
 
 void structural_paths(Checks& checks) {
@@ -111,14 +102,14 @@ void empty_and_binary_keys(Checks& checks) {
     checks.path("empty root restored", empty, "");
 
     PathHandler binary;
-    const char parent[] = {'a', '\0', 'b'};
-    const char child[] = {'c', '\0', 'd'};
-    const std::string parent_string(parent, sizeof parent);
-    const std::string child_string(child, sizeof child);
+    constexpr std::array parent = {'a', '\0', 'b'};
+    constexpr std::array child = {'c', '\0', 'd'};
+    const std::string parent_string(parent.data(), parent.size());
+    const std::string child_string(child.data(), child.size());
     binary.push();
-    binary.setKey(parent, sizeof parent);
+    binary.setKey(parent.data(), parent.size());
     binary.push();
-    binary.setKey(child, sizeof child);
+    binary.setKey(child.data(), child.size());
     checks.path("embedded NUL keys preserve bytes", binary, parent_string + "." + child_string);
     binary.push();
     binary.setKey("leaf", 4);
@@ -169,7 +160,7 @@ void boundaries_and_errors(Checks& checks) {
     std::vector<char> untouched(limit, '!');
     too_long.buildArgName(untouched.data());
     checks.check("errored legacy conversion writes no bytes",
-        untouched == std::vector<char>(limit, '!'));
+        untouched == std::vector(limit, '!'));
 
     PathHandler push_limit;
     push_limit.setKey(parent.data(), parent.size());

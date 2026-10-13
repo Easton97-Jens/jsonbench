@@ -4,14 +4,16 @@
 
 #include "pathhandler.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 #include <rapidjson/error/en.h>
 #include <rapidjson/filereadstream.h>
@@ -26,27 +28,35 @@ struct rj_parser {
 
 namespace {
 
+class RapidJsonInputError final : public std::runtime_error {
+  public:
+    using std::runtime_error::runtime_error;
+};
+
 // RapidJSON keeps one decoded token and its iterative structural stack here.
 // A checked allocator stops hostile unterminated strings/numbers from growing
 // document-sized storage before a SAX callback can enforce the token limit.
 class TemporaryAllocator {
   public:
-    static const bool kNeedFree = true;
-    void* Malloc(std::size_t size) { return Realloc(nullptr, 0, size); }
-    void* Realloc(void* data, std::size_t, std::size_t size) {
+    static constexpr bool kNeedFree = true;
+    char* Malloc(std::size_t size) const { return Realloc(nullptr, 0, size); }
+    char* Realloc(char* data, std::size_t old_size, std::size_t size) const {
         constexpr std::size_t budget =
             static_cast<std::size_t>(JSON_STRING_SIZE) * 4 + 16384;
         if (size > budget)
-            throw std::length_error("RapidJSON token/state allocation limit exceeded");
-        if (size == 0) {
-            std::free(data);
-            return nullptr;
-        }
-        void* result = std::realloc(data, size);
-        if (result == nullptr) throw std::bad_alloc();
-        return result;
+            throw RapidJsonInputError("RapidJSON token/state allocation limit exceeded");
+        // RapidJSON 1.1's GenericReader stack passes char* storage to Realloc
+        // and Free. A char array supplies alignment for its scalar state values.
+        // Allocate first: an exception leaves the original stack allocation live.
+        auto replacement = size == 0 ? nullptr : std::make_unique<char[]>(size);
+        if (data != nullptr && size != 0)
+            std::copy_n(data, std::min(old_size, size), replacement.get());
+        const std::unique_ptr<char[]> original(data);
+        return replacement.release();
     }
-    static void Free(void* data) { std::free(data); }
+    static void Free(char* data) noexcept {
+        const std::unique_ptr<char[]> allocation(data);
+    }
 };
 
 // RapidJSON uses zero both for its synthetic EOF sentinel and for an input
@@ -65,7 +75,7 @@ class CheckedStream {
             const std::size_t offset = source_.Tell();
             source_.Take();
             if (source_.Tell() != offset)
-                throw std::invalid_argument("Unexpected NUL byte at offset " +
+                throw RapidJsonInputError("Unexpected NUL byte at offset " +
                     std::to_string(offset));
         }
         return value;
@@ -76,10 +86,12 @@ class CheckedStream {
         return value;
     }
     std::size_t Tell() const { return source_.Tell(); }
-    Ch* PutBegin() { throw std::logic_error("In-situ parsing is disabled"); }
-    void Put(Ch) { throw std::logic_error("In-situ parsing is disabled"); }
-    void Flush() {}
-    std::size_t PutEnd(Ch*) { throw std::logic_error("In-situ parsing is disabled"); }
+    Ch* PutBegin() const { throw RapidJsonInputError("In-situ parsing is disabled"); }
+    void Put(Ch) const { throw RapidJsonInputError("In-situ parsing is disabled"); }
+    void Flush() const {
+        // Required by the RapidJSON stream concept; input has no output buffer.
+    }
+    std::size_t PutEnd(Ch*) const { throw RapidJsonInputError("In-situ parsing is disabled"); }
 };
 
 struct FileCloser {
@@ -88,7 +100,9 @@ struct FileCloser {
 
 struct DiscardStream {
     using Ch = char;
-    void Put(char) {}
+    void Put(char) const {
+        // Validate decoded UTF-8 without storing a second copy of the token.
+    }
 };
 
 // kParseValidateEncodingFlag validates raw UTF-8, but RapidJSON 1.1 also
@@ -144,7 +158,7 @@ class RJSAXHandler {
             std::fputc('\n', stdout) != EOF;
         return ok || fail("Unable to write JSON argument output");
     }
-    bool integer(const std::string& value) { return argument(value.data(), value.size()); }
+    bool integer(std::string_view value) { return argument(value.data(), value.size()); }
 
   public:
     explicit RJSAXHandler(const rj_parser& settings) : settings_(settings) {}
@@ -179,7 +193,8 @@ class RJSAXHandler {
 };
 
 template <typename Source>
-int parse(rj_parser* parser, Source& source, char** error_msg) {
+int parse(const rj_parser* parser, Source& source, char** error_msg,
+        std::FILE* file = nullptr) {
     RJSAXHandler handler(*parser); // Fresh counters/path, retained settings.
     CheckedStream<Source> input(source);
     rapidjson::GenericReader<rapidjson::UTF8<>, rapidjson::UTF8<>,
@@ -187,6 +202,10 @@ int parse(rj_parser* parser, Source& source, char** error_msg) {
     constexpr unsigned flags = rapidjson::kParseNumbersAsStringsFlag |
         rapidjson::kParseValidateEncodingFlag | rapidjson::kParseIterativeFlag;
     const rapidjson::ParseResult result = reader.Parse<flags>(input, handler);
+    if (file != nullptr && std::ferror(file)) {
+        *error_msg = strdup("Error reading JSON file");
+        return 2;
+    }
     if (!result) {
         std::string message = handler.error() ? handler.error() :
             rapidjson::GetParseError_En(result.Code());
@@ -201,12 +220,31 @@ int parse(rj_parser* parser, Source& source, char** error_msg) {
     return 0;
 }
 
-int set_limit(rj_parser* parser, double value, unsigned int* target) {
+int set_limit(const rj_parser* parser, double value, unsigned int* target) {
     if (parser == nullptr || !std::isfinite(value) || value < 0 ||
         value > std::numeric_limits<unsigned int>::max() || std::floor(value) != value)
         return -1;
     *target = static_cast<unsigned int>(value);
     return 0;
+}
+
+// Contain exceptions at the C interface after handling the concrete failures
+// produced by input validation, allocation, and standard string operations.
+template <typename Operation>
+int at_c_boundary(Operation&& operation, char** error_msg, int failure_status = 2) noexcept {
+    try {
+        return operation();
+    } catch (const RapidJsonInputError& error) {
+        *error_msg = strdup(error.what());
+    } catch (const std::bad_alloc& error) {
+        *error_msg = strdup(error.what());
+    } catch (const std::length_error& error) {
+        *error_msg = strdup(error.what());
+    } catch (...) {
+        // Third-party exceptions of unknown type must never cross the C ABI.
+        *error_msg = strdup("Unexpected RapidJSON parser failure");
+    }
+    return failure_status;
 }
 
 } // namespace
@@ -216,16 +254,10 @@ extern "C" int rj_json_init(rj_parser** parser, char** error_msg) {
     *error_msg = nullptr;
     if (parser == nullptr) return -1;
     *parser = nullptr;
-    try {
-        *parser = new rj_parser{};
+    return at_c_boundary([&] {
+        *parser = std::make_unique<rj_parser>().release();
         return 0;
-    } catch (const std::exception& e) {
-        *error_msg = strdup(e.what());
-        return 1;
-    } catch (...) {
-        *error_msg = strdup("Unable to initialize RapidJSON parser");
-        return 1;
-    }
+    }, error_msg, 1);
 }
 
 extern "C" int rj_parse_buffer(rj_parser* parser, const char* buf,
@@ -233,16 +265,10 @@ extern "C" int rj_parse_buffer(rj_parser* parser, const char* buf,
     if (error_msg == nullptr) return -1;
     *error_msg = nullptr;
     if (parser == nullptr || buf == nullptr) return -1;
-    try {
+    return at_c_boundary([&] {
         rapidjson::MemoryStream input(buf, len);
         return parse(parser, input, error_msg);
-    } catch (const std::exception& e) {
-        *error_msg = strdup(e.what());
-        return 2;
-    } catch (...) {
-        *error_msg = strdup("Unexpected RapidJSON parser failure");
-        return 2;
-    }
+    }, error_msg);
 }
 
 extern "C" int rj_parse_file(rj_parser* parser, const char* filename,
@@ -250,28 +276,16 @@ extern "C" int rj_parse_file(rj_parser* parser, const char* filename,
     if (error_msg == nullptr) return -1;
     *error_msg = nullptr;
     if (parser == nullptr || filename == nullptr) return -1;
-    try {
-        std::unique_ptr<std::FILE, FileCloser> file(std::fopen(filename, "rb"));
+    return at_c_boundary([&] {
+        const std::unique_ptr<std::FILE, FileCloser> file(std::fopen(filename, "rb"));
         if (!file) {
             *error_msg = strdup("Unable to open JSON file");
             return 2;
         }
-        char buffer[16384];
-        rapidjson::FileReadStream input(file.get(), buffer, sizeof(buffer));
-        const int result = parse(parser, input, error_msg);
-        if (std::ferror(file.get())) {
-            std::free(*error_msg);
-            *error_msg = strdup("Error reading JSON file");
-            return 2;
-        }
-        return result;
-    } catch (const std::exception& e) {
-        *error_msg = strdup(e.what());
-        return 2;
-    } catch (...) {
-        *error_msg = strdup("Unexpected RapidJSON parser failure");
-        return 2;
-    }
+        std::array<char, 16384> buffer{};
+        rapidjson::FileReadStream input(file.get(), buffer.data(), buffer.size());
+        return parse(parser, input, error_msg, file.get());
+    }, error_msg);
 }
 
 extern "C" int rj_set_max_depth(rj_parser* parser, double value) {
@@ -286,7 +300,7 @@ extern "C" int rj_set_silence(rj_parser* parser, int silence) {
     return 0;
 }
 extern "C" int rj_json_cleanup(rj_parser* parser) {
-    delete parser;
+    const std::unique_ptr<rj_parser> owned(parser);
     return 0;
 }
 

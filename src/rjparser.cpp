@@ -65,8 +65,10 @@ class ScratchAllocator {
     void deallocate(T* data, std::size_t count) const noexcept {
         std::allocator<T>{}.deallocate(data, count);
     }
-    template <typename U> bool operator==(const ScratchAllocator<U>&) const noexcept { return true; }
-    template <typename U> bool operator!=(const ScratchAllocator<U>&) const noexcept { return false; }
+    template <typename U>
+    friend bool operator==(const ScratchAllocator&, const ScratchAllocator<U>&) noexcept { return true; }
+    template <typename U>
+    friend bool operator!=(const ScratchAllocator&, const ScratchAllocator<U>&) noexcept { return false; }
 };
 
 // Each parse here creates a fresh GenericReader with its own stack allocator.

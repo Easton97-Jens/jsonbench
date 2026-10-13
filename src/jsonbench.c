@@ -18,6 +18,7 @@
 #include <limits.h>
 #include <time.h>
 #include <math.h>
+#include <errno.h>
 
 #ifndef LIMIT_ARG_NUM
 #define LIMIT_ARG_NUM 500
@@ -56,6 +57,23 @@ static void print_stats(const double *times, int n) {
 
 static char available_engines[16][20] = {""};
 static int engine_count = 0;
+
+/* Do not let atoi overflow, accept a prefix, or turn negatives into unsigned
+ * limits. The parser interfaces take double, which exactly represents UINT_MAX.
+ */
+static int parse_limit(const char *text, unsigned int *value) {
+    if (text == NULL || *text == '\0') return 0;
+    for (const char *p = text; *p; ++p) {
+        if (*p < '0' || *p > '9') return 0;
+    }
+    errno = 0;
+    char *end = NULL;
+    unsigned long parsed = strtoul(text, &end, 10);
+    if (errno == ERANGE || *end != '\0' || parsed == 0 || parsed > UINT_MAX)
+        return 0;
+    *value = (unsigned int)parsed;
+    return 1;
+}
 
 static void showhelp(void) {
     printf("Use: jsonbench [OPTIONS]\n\n");
@@ -154,18 +172,16 @@ int main(int argc, char ** argv) {
                 }
                 break;
             case 'a':
-                arg_limit = atoi(optarg);
-                if (arg_limit == 0 || arg_limit > (unsigned int)UINT_MAX) {
-                    fprintf(stderr, "Ohh... Try to pass for '-a' an integer between 0 and %u\n",
+                if (!parse_limit(optarg, &arg_limit)) {
+                    fprintf(stderr, "Pass for '-a' an integer between 1 and %u\n",
                             (unsigned int)UINT_MAX);
                     free(jsonengine);
                     return EXIT_FAILURE;
                 }
                 break;
             case 'd':
-                depth_limit = atoi(optarg);
-                if (depth_limit == 0 || depth_limit > (unsigned int)UINT_MAX) {
-                    fprintf(stderr, "Ohh... Try to pass for '-d' an integer between 0 and %u\n",
+                if (!parse_limit(optarg, &depth_limit)) {
+                    fprintf(stderr, "Pass for '-d' an integer between 1 and %u\n",
                             (unsigned int)UINT_MAX);
                     free(jsonengine);
                     return EXIT_FAILURE;
@@ -759,13 +775,21 @@ int main(int argc, char ** argv) {
 
         if (n > 1 && !silence) {
             jsoncons_parser *json = NULL;
-            jsoncons_json_init(&json, &error_msg);
-            if (json != NULL) {
+            rc = jsoncons_json_init(&json, &error_msg);
+            if (rc == 0 && json != NULL) {
                 jsoncons_set_max_depth(json, depth_limit);
                 jsoncons_set_max_arg_num(json, arg_limit);
                 jsoncons_set_silence(json, 0);
-                jsoncons_parse_file(json, jsonfile, &error_msg);
+                rc = jsoncons_parse_file(json, jsonfile, &error_msg);
                 jsoncons_json_cleanup(json);
+            } else {
+                rc = 1;
+            }
+            if (rc != 0) {
+                if (error_msg) { fprintf(stderr, "Error: %s\n", error_msg); free(error_msg); }
+                free(times);
+                free(jsonengine);
+                return EXIT_FAILURE;
             }
         }
     }

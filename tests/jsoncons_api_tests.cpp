@@ -96,7 +96,7 @@ void limit_setters(Checks& checks) {
     checks.check("set depth to two", jsoncons_set_max_depth(parser.value, 2) == 0);
     checks.check("set arguments to two", jsoncons_set_max_arg_num(parser.value, 2) == 0);
     checks.check("enable silence", jsoncons_set_silence(parser.value, 1) == 0);
-    const double upper = static_cast<double>(UINT_MAX);
+    const auto upper = static_cast<double>(UINT_MAX);
     const std::vector<std::pair<std::string, double>> invalid = {
         {"NaN", std::numeric_limits<double>::quiet_NaN()},
         {"positive infinity", std::numeric_limits<double>::infinity()},

@@ -17,6 +17,9 @@
 
 namespace jsonbench::test {
 
+inline constexpr auto close_c_file = [](FILE* file) noexcept { std::fclose(file); };
+inline constexpr auto free_c_diagnostic = [](char* value) noexcept { std::free(value); };
+
 class TestError final : public std::runtime_error {
   public:
     using std::runtime_error::runtime_error;
@@ -44,7 +47,12 @@ class FileDescriptor {
 
 struct DirectoryCleanup {
     std::string path;
+    explicit DirectoryCleanup(std::string value) : path(std::move(value)) {}
     ~DirectoryCleanup() { ::rmdir(path.c_str()); }
+    DirectoryCleanup(const DirectoryCleanup&) = delete;
+    DirectoryCleanup& operator=(const DirectoryCleanup&) = delete;
+    DirectoryCleanup(DirectoryCleanup&&) = delete;
+    DirectoryCleanup& operator=(DirectoryCleanup&&) = delete;
 };
 
 class PrivateWorkspace {
@@ -81,11 +89,16 @@ inline const PrivateWorkspace& workspace() {
 struct FileCleanup {
     std::string path;
     bool owned = false;
+    explicit FileCleanup(std::string value) : path(std::move(value)) {}
     ~FileCleanup() { if (owned) ::unlink(path.c_str()); }
+    FileCleanup(const FileCleanup&) = delete;
+    FileCleanup& operator=(const FileCleanup&) = delete;
+    FileCleanup(FileCleanup&&) = delete;
+    FileCleanup& operator=(FileCleanup&&) = delete;
 };
 
 class TemporaryFile {
-    FileCleanup file_{workspace().path() + "/fixture-XXXXXX", false};
+    FileCleanup file_{workspace().path() + "/fixture-XXXXXX"};
     FileDescriptor descriptor_;
   public:
     TemporaryFile() {
@@ -121,9 +134,8 @@ class TemporaryInput {
 };
 
 class CapturedOutput {
-    using FileCloser = int (*)(FILE*);
     TemporaryFile temporary_;
-    std::unique_ptr<FILE, FileCloser> file_{nullptr, &std::fclose};
+    std::unique_ptr<FILE, decltype(close_c_file)> file_{nullptr, close_c_file};
     FileDescriptor saved_;
     bool active_ = false;
   public:
@@ -145,7 +157,7 @@ class CapturedOutput {
     }
     CapturedOutput(const CapturedOutput&) = delete;
     CapturedOutput& operator=(const CapturedOutput&) = delete;
-    std::string read() {
+    std::string read() const {
         if (std::fflush(stdout) != 0 || std::fseek(file_.get(), 0, SEEK_SET) != 0)
             throw TestError("captured output rewind failed");
         std::string result;
@@ -159,9 +171,9 @@ class CapturedOutput {
 };
 
 class ErrorSlot {
-    using Diagnostic = std::unique_ptr<char, decltype(&std::free)>;
-    Diagnostic original_{::strdup(""), &std::free};
-    Diagnostic returned_{nullptr, &std::free};
+    using Diagnostic = std::unique_ptr<char, decltype(free_c_diagnostic)>;
+    Diagnostic original_{::strdup(""), free_c_diagnostic};
+    Diagnostic returned_{nullptr, free_c_diagnostic};
     char* value_ = original_.get();
   public:
     ErrorSlot() {

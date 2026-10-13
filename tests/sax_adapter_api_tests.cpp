@@ -97,8 +97,9 @@ void invalid_arguments(Checks& checks) {
     TemporaryInput input("null");
     for (unsigned int kind = 0; kind < 3; ++kind) {
         ErrorSlot error;
+        const unsigned int length = kind == 1 ? 0 : 1;
         const int rc = kind == 0 ? Api::buffer(nullptr, "{}", 2, error.slot()) :
-            Api::buffer(parser.value, nullptr, kind == 1 ? 0 : 1, error.slot());
+            Api::buffer(parser.value, nullptr, length, error.slot());
         checks.check("invalid buffer arguments " + std::to_string(kind), rc != 0);
         checks.check("invalid buffer replaces diagnostic " + std::to_string(kind), error.replaced());
         checks.check("invalid buffer diagnostic is null or nonempty " + std::to_string(kind),

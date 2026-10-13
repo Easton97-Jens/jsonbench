@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <new>
@@ -53,6 +54,35 @@ class UnicodeSource {
             std::to_string(line_) + ", column " + std::to_string(column_));
     }
 
+    unsigned int hex_digit(unsigned char c) const {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        invalid();
+    }
+
+    void complete_codepoint() {
+        if (low_required_) {
+            if (codepoint_ < 0xdc00 || codepoint_ > 0xdfff) invalid();
+            low_required_ = false;
+            state_ = State::text;
+            return;
+        }
+        if (codepoint_ >= 0xd800 && codepoint_ <= 0xdbff) {
+            low_required_ = true;
+            state_ = State::pair_slash;
+            return;
+        }
+        if (codepoint_ >= 0xdc00 && codepoint_ <= 0xdfff) invalid();
+        state_ = State::text;
+    }
+
+    void start_hex() {
+        state_ = State::hex;
+        codepoint_ = 0;
+        digits_ = 0;
+    }
+
     void check(unsigned char c) {
         if (c == '\n') { ++line_; column_ = 0; } else { ++column_; }
         switch (state_) {
@@ -65,32 +95,14 @@ class UnicodeSource {
                 break;
             case State::escape:
                 if (c == 'u') {
-                    state_ = State::hex;
-                    codepoint_ = 0;
-                    digits_ = 0;
+                    start_hex();
                 } else {
                     state_ = State::text;
                 }
                 break;
             case State::hex: {
-                unsigned int digit;
-                if (c >= '0' && c <= '9') digit = c - '0';
-                else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
-                else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
-                else invalid();
-                codepoint_ = codepoint_ * 16 + digit;
-                if (++digits_ != 4) break;
-                if (low_required_) {
-                    if (codepoint_ < 0xdc00 || codepoint_ > 0xdfff) invalid();
-                    low_required_ = false;
-                    state_ = State::text;
-                } else if (codepoint_ >= 0xd800 && codepoint_ <= 0xdbff) {
-                    low_required_ = true;
-                    state_ = State::pair_slash;
-                } else {
-                    if (codepoint_ >= 0xdc00 && codepoint_ <= 0xdfff) invalid();
-                    state_ = State::text;
-                }
+                codepoint_ = codepoint_ * 16 + hex_digit(c);
+                if (++digits_ == 4) complete_codepoint();
                 break;
             }
             case State::pair_slash:
@@ -99,16 +111,16 @@ class UnicodeSource {
                 break;
             case State::pair_u:
                 if (c != 'u') invalid();
-                state_ = State::hex;
-                codepoint_ = 0;
-                digits_ = 0;
+                start_hex();
                 break;
         }
     }
 
   public:
     using value_type = char;
-    explicit UnicodeSource(std::istream& input) : source_(input) {}
+    // Keep the stream mutable: jsoncons consumes its buffer and changes its
+    // EOF/error flags. A reference wrapper explicitly retains that borrowing.
+    explicit UnicodeSource(std::reference_wrapper<std::istream> input) : source_(input.get()) {}
     UnicodeSource(UnicodeSource&&) = default;
     bool eof() const { return source_.eof(); }
     bool is_error() const { return source_.is_error(); }
@@ -124,11 +136,14 @@ class UnicodeSource {
 // multi-megabyte string/number cannot consume document-sized memory first.
 // Leave room for geometric growth and the parser's structural state stack.
 template <typename T>
-class TemporaryAllocator {
+class TemporaryAllocator : public std::allocator<T> {
   public:
     using value_type = T;
     TemporaryAllocator() = default;
-    template <typename U> TemporaryAllocator(const TemporaryAllocator<U>&) {}
+    // Reuse the standard allocator's conversion constructors. jsoncons needs
+    // implicit allocator rebinding when it constructs the parser state vector.
+    using std::allocator<T>::allocator;
+    template <typename U> struct rebind { using other = TemporaryAllocator<U>; };
     T* allocate(std::size_t count) {
         constexpr std::size_t budget =
             static_cast<std::size_t>(JSON_STRING_SIZE) * 4 + 16384;
@@ -139,8 +154,10 @@ class TemporaryAllocator {
     void deallocate(T* data, std::size_t count) noexcept {
         std::allocator<T>{}.deallocate(data, count);
     }
-    template <typename U> bool operator==(const TemporaryAllocator<U>&) const { return true; }
-    template <typename U> bool operator!=(const TemporaryAllocator<U>&) const { return false; }
+    template <typename U>
+    friend bool operator==(const TemporaryAllocator&, const TemporaryAllocator<U>&) noexcept { return true; }
+    template <typename U>
+    friend bool operator!=(const TemporaryAllocator&, const TemporaryAllocator<U>&) noexcept { return false; }
 };
 
 // Keep structural boundaries explicitly so dots, empty keys and NULs remain
@@ -297,7 +314,7 @@ class ArgumentVisitor final : public jsoncons::default_json_visitor {
     const char* error() const { return error_; }
 };
 
-int set_limit(jsoncons_parser* parser, double value, unsigned int* target) {
+int set_limit(const jsoncons_parser* parser, double value, unsigned int* target) {
     if (parser == nullptr || !std::isfinite(value) || value < 0 ||
         value > std::numeric_limits<unsigned int>::max() || std::floor(value) != value) {
         return -1;
@@ -348,7 +365,7 @@ extern "C" int jsoncons_parse_file(jsoncons_parser* parser, const char* filename
             parser->max_depth > static_cast<unsigned int>(INT_MAX) ?
             INT_MAX : parser->max_depth));
         jsoncons::basic_json_reader<char, UnicodeSource,
-            TemporaryAllocator<char>> reader(input, visitor, options);
+            TemporaryAllocator<char>> reader(std::reference_wrapper<std::istream>(input), visitor, options);
         std::error_code ec;
         reader.read(ec); // Includes finalization and checks trailing content.
         if (ec) {

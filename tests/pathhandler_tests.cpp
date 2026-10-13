@@ -157,7 +157,7 @@ void boundaries_and_errors(Checks& checks) {
     const std::string longer_child = child + "c";
     too_long.setKey(longer_child.data(), longer_child.size());
     checks.check("full path at byte limit rejected", too_long.name().empty() && too_long.m_error);
-    std::vector<char> untouched(limit, '!');
+    std::vector untouched(limit, '!');
     too_long.buildArgName(untouched.data());
     checks.check("errored legacy conversion writes no bytes",
         untouched == std::vector(limit, '!'));

@@ -4,10 +4,10 @@
 
 #include "pathhandler.h"
 
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <rapidjson/error/en.h>
 #include <rapidjson/filereadstream.h>
@@ -34,29 +35,69 @@ class RapidJsonInputError final : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-// RapidJSON keeps one decoded token and its iterative structural stack here.
-// A checked allocator stops hostile unterminated strings/numbers from growing
-// document-sized storage before a SAX callback can enforce the token limit.
-class TemporaryAllocator {
+static_assert(alignof(rapidjson::SizeType) <= alignof(std::max_align_t),
+    "RapidJSON state must fit fundamental allocation alignment");
+
+constexpr std::size_t scratch_budget =
+    static_cast<std::size_t>(JSON_STRING_SIZE) * 4 + 16384;
+
+// Bound the vector's actual allocation, including any implementation-specific
+// reserve rounding. GenericReader also stores SizeType scalars in this storage.
+template <typename T>
+class ScratchAllocator {
   public:
-    static constexpr bool kNeedFree = true;
-    char* Malloc(std::size_t size) const { return Realloc(nullptr, 0, size); }
-    char* Realloc(char* data, std::size_t old_size, std::size_t size) const {
-        constexpr std::size_t budget =
-            static_cast<std::size_t>(JSON_STRING_SIZE) * 4 + 16384;
-        if (size > budget)
+    using value_type = T;
+    ScratchAllocator() = default;
+    template <typename U> explicit ScratchAllocator(const ScratchAllocator<U>&) {}
+    T* allocate(std::size_t count) const {
+        if (count > scratch_budget / sizeof(T))
             throw RapidJsonInputError("RapidJSON token/state allocation limit exceeded");
-        // RapidJSON 1.1's GenericReader stack passes char* storage to Realloc
-        // and Free. Byte-array allocation supplies alignment for its scalar states.
-        // Allocate first: an exception leaves the original stack allocation live.
-        auto replacement = size == 0 ? nullptr : std::make_unique<std::byte[]>(size);
-        if (data != nullptr && size != 0)
-            std::memcpy(replacement.get(), data, std::min(old_size, size));
-        const std::unique_ptr<std::byte[]> original(reinterpret_cast<std::byte*>(data));
-        return reinterpret_cast<char*>(replacement.release());
+        std::allocator<T> allocator;
+        auto* memory = allocator.allocate(count);
+        // The installed standard allocator uses global operator new, which
+        // meets this alignment. Check it explicitly for other implementations.
+        if (reinterpret_cast<std::uintptr_t>(memory) % alignof(rapidjson::SizeType) != 0) {
+            allocator.deallocate(memory, count);
+            throw RapidJsonInputError("RapidJSON scratch storage is not aligned");
+        }
+        return memory;
     }
-    static void Free(char* data) noexcept {
-        const std::unique_ptr<std::byte[]> allocation(reinterpret_cast<std::byte*>(data));
+    void deallocate(T* data, std::size_t count) const noexcept {
+        std::allocator<T>{}.deallocate(data, count);
+    }
+    template <typename U> bool operator==(const ScratchAllocator<U>&) const noexcept { return true; }
+    template <typename U> bool operator!=(const ScratchAllocator<U>&) const noexcept { return false; }
+};
+
+// Each parse here creates a fresh GenericReader with its own stack allocator.
+// Keep its UTF-8 token and scalar state storage in one bounded vector. Like
+// RapidJSON's public MemoryPoolAllocator, Free is a no-op: ownership remains
+// with the allocator, whose vector releases all storage at destruction.
+class TemporaryAllocator {
+    std::vector<char, ScratchAllocator<char>> storage_;
+  public:
+    static constexpr bool kNeedFree = false;
+    char* Malloc(std::size_t size) { return Realloc(nullptr, 0, size); }
+    char* Realloc(char* data, std::size_t old_size, std::size_t size) {
+        if (size > scratch_budget)
+            throw RapidJsonInputError("RapidJSON token/state allocation limit exceeded");
+        if ((data == nullptr && old_size != 0) ||
+            (data != nullptr && (data != storage_.data() || old_size != storage_.size())) ||
+            (data == nullptr && !storage_.empty()))
+            throw RapidJsonInputError("Invalid RapidJSON scratch allocation");
+        if (size == 0) {
+            storage_.clear();
+            return nullptr;
+        }
+        // reserve has the strong exception guarantee for char; a failed growth
+        // leaves the reader's old pointer and bytes valid. Reserve first so
+        // resize cannot request its usual geometric growth beyond the budget.
+        storage_.reserve(size);
+        storage_.resize(size);
+        return storage_.data();
+    }
+    static void Free(char*) noexcept {
+        // The owning vector is released when GenericReader deletes its allocator.
     }
 };
 

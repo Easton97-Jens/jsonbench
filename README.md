@@ -194,12 +194,14 @@ To exercise the jsoncons C interface separately after configuring the project
 (use the same include flags as your normal build):
 
 ```bash
-g++ -std=c++17 ${CPPFLAGS:-} tests/jsoncons_api_tests.cpp src/jsonconsparser.cpp -o /tmp/jsoncons_api_tests
+gcc -std=gnu11 -c tests/test_c_memory.c -o /tmp/jsonbench-test-c-memory.o
+g++ -std=c++17 ${CPPFLAGS:-} tests/jsoncons_api_tests.cpp src/jsonconsparser.cpp \
+  /tmp/jsonbench-test-c-memory.o -o /tmp/jsoncons_api_tests
 /tmp/jsoncons_api_tests
 ```
 
 For memory-safety validation, add `-fsanitize=address,undefined
--fno-omit-frame-pointer` to that compile command. For repeatable DOM/SAX/YAJL
+-fno-omit-frame-pointer` to both compilation commands. For repeatable DOM/SAX/YAJL
 measurements, preserve a pre-change executable and run:
 
 ```bash

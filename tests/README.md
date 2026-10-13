@@ -21,7 +21,9 @@ containers, booleans/null, Unicode, embedded NUL, escaped characters, numeric
 boundaries and precision, malformed JSON/UTF-8, depth and argument boundaries,
 long paths/keys/values, huge tokens, a document larger than the legacy file
 buffer, silent mode, repeated benchmark iterations, CLI limit validation, file
-errors and output errors. Existing fixtures and cross-engine comparisons remain
+errors and output errors. Iteration counts reject negative, zero, nonnumeric,
+fractional, trailing-junk and overflowing inputs before allocation. Existing
+fixtures and cross-engine comparisons remain
 included. New expected outputs are explicit data in the helper, not generated
 by the parser under test. Argument counts are also tested by running exactly at
 the leaf count and one below it. Boolean and null leaves count as arguments;
@@ -69,14 +71,17 @@ After configuring with JSONCONS enabled, compile and run it with the same header
 paths used for the main build:
 
 ```sh
+gcc -std=gnu11 -Wall -Wextra -Werror -c tests/test_c_memory.c \
+  -o /tmp/jsonbench-test-c-memory.o
 g++ -std=c++17 -Wall -Wextra -Werror $CPPFLAGS \
-  tests/jsoncons_api_tests.cpp src/jsonconsparser.cpp -o /tmp/jsoncons-api-tests
+  tests/jsoncons_api_tests.cpp src/jsonconsparser.cpp \
+  /tmp/jsonbench-test-c-memory.o -o /tmp/jsoncons-api-tests
 /tmp/jsoncons-api-tests
 ```
 
 `CPPFLAGS` must include the installed jsoncons include path if it is outside the
 compiler's standard paths. Add `-fsanitize=address,undefined
--fno-omit-frame-pointer` to this command to run the harness with sanitizers.
+-fno-omit-frame-pointer` to both compilation commands to run the harness with sanitizers.
 The API harness returns nonzero on failure and returns 77 if configured without
 JSONCONS; that is unavailable coverage, not a passing test.
 

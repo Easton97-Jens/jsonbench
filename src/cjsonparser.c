@@ -1,123 +1,103 @@
 #include "cjsonparser.h"
-
 #if HAVE_CJSON
-
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "domarguments.h"
 #include <cjson/cJSON.h>
 
-struct cjson_parser {
-    int silence;
-};
+struct cjson_parser { dom_settings settings; };
 
-static int read_whole_file(const char *filename, char **content, long *length, char **error_msg) {
-    FILE *fp = fopen(filename, "rb");
-    if (fp == NULL) {
-        *error_msg = strdup("Unable to open JSON file");
-        return 1;
+static int cjson_kind(void *node) {
+    if (cJSON_IsObject((cJSON *)node)) return DOM_OBJECT;
+    if (cJSON_IsArray((cJSON *)node)) return DOM_ARRAY;
+    return DOM_SCALAR;
+}
+
+static int cjson_child(void *node, dom_cursor *cursor, int first,
+                        void **child, const char **key, size_t *key_length) {
+    cJSON *json = (cJSON *)node;
+    cJSON *item = first ? json->child : ((cJSON *)cursor->pointer)->next;
+    if (item == NULL) return 0;
+    cursor->pointer = (void *)item; *child = item;
+    if (cJSON_IsObject(json)) {
+        *key = item->string; *key_length = strlen(item->string);
     }
+    return 1;
+}
 
-    if (fseek(fp, 0, SEEK_END) != 0) {
-        fclose(fp);
-        *error_msg = strdup("Unable to seek JSON file");
-        return 1;
-    }
-
-    long len = ftell(fp);
-    if (len < 0) {
-        fclose(fp);
-        *error_msg = strdup("Unable to measure JSON file");
-        return 1;
-    }
-    rewind(fp);
-
-    char *buffer = (char *)malloc((size_t)len + 1U);
-    if (buffer == NULL) {
-        fclose(fp);
-        *error_msg = strdup("Unable to allocate JSON buffer");
-        return 1;
-    }
-
-    size_t read_len = fread(buffer, 1, (size_t)len, fp);
-    fclose(fp);
-    if (read_len != (size_t)len) {
-        free(buffer);
-        *error_msg = strdup("Unable to read entire JSON file");
-        return 1;
-    }
-
-    buffer[len] = '\0';
-    *content = buffer;
-    *length = len;
+static int cjson_scalar(void *node, dom_value *value, char **error) {
+    cJSON *json = (cJSON *)node;
+    if (cJSON_IsNull(json)) { value->data = ""; value->length = 0; }
+    else if (cJSON_IsBool(json)) {
+        value->data = cJSON_IsTrue(json) ? "true" : "false"; value->length = strlen(value->data);
+    } else if (cJSON_IsString(json)) {
+        value->data = json->valuestring; value->length = strlen(value->data);
+    } else if (cJSON_IsNumber(json)) {
+        int length;
+        if (!isfinite(json->valuedouble)) return dom_error(error, "Nonfinite cJSON number");
+        length = snprintf(value->number, sizeof(value->number), "%.17g", json->valuedouble);
+        if (length < 0 || (size_t)length >= sizeof(value->number)) return dom_error(error, "Unable to format cJSON number");
+        value->data = value->number; value->length = (size_t)length;
+        value->number_kind = DOM_ANY_NUMBER;
+    } else return dom_error(error, "Unexpected cJSON scalar type");
     return 0;
+}
+
+static const dom_adapter cjson_adapter = {cjson_kind, cjson_child, cjson_scalar};
+static const dom_input_policy cjson_policy = {DOM_NUL_FORBIDDEN, DOM_NUM_DOUBLE};
+
+int cjson_parse_file(cjson_parser *parser, const char *filename, char **error_msg) {
+    char *content = NULL;
+    size_t length = 0;
+    size_t keys = 0;
+    dom_numbers numbers = {0};
+    dom_locale_guard locale = {0};
+    const char *end = NULL;
+    cJSON *root = NULL;
+    int rc;
+    rc = dom_begin_numeric_file(parser, filename, "Invalid cJSON parser arguments",
+                                  &locale, &content, &length, error_msg);
+    if (rc != 0) return rc;
+    /* cJSON has no decoded string lengths and stores all numbers as doubles.
+     * Reject NUL and unsafe integers instead of silently truncating/rounding. */
+    rc = dom_preflight_numbers(content, length, &parser->settings, &cjson_policy,
+                                &keys, &numbers, error_msg);
+    if (rc != 0) goto done;
+    root = cJSON_ParseWithLengthOpts(content, length + 1, &end, 1);
+    if (root == NULL) {
+        char message[128];
+        /* Error pointers refer into content: capture position before freeing. */
+        size_t offset = end != NULL && end >= content && end <= content + length ? (size_t)(end - content) : 0;
+        snprintf(message, sizeof(message), "cJSON parse error at byte %zu", offset);
+        rc = dom_error(error_msg, message); goto done;
+    }
+    rc = dom_walk_numbers(root, &cjson_adapter, &parser->settings, &keys, &numbers, error_msg);
+ done:
+    cJSON_Delete(root);
+    free(numbers.spans);
+    free(content);
+    return dom_locale_finish(&locale, rc, error_msg);
 }
 
 int cjson_json_init(cjson_parser **parser, char **error_msg) {
-    assert(parser != NULL);
-    assert(error_msg != NULL);
-
-    *parser = (cjson_parser *)calloc(1, sizeof(cjson_parser));
-    if (*parser == NULL) {
-        *error_msg = strdup("Unable to allocate cJSON parser");
-        return 1;
-    }
-
+    if (error_msg == NULL) return -1;
     *error_msg = NULL;
+    if (parser == NULL) return dom_error(error_msg, "Invalid cJSON parser output pointer");
+    *parser = (cjson_parser *)calloc(1, sizeof(**parser));
+    if (*parser == NULL) return dom_error(error_msg, "Unable to allocate cJSON parser");
+    dom_settings_init(&(*parser)->settings);
     return 0;
 }
 
-int cjson_parse_file(cjson_parser *parser, const char *filename, char **error_msg) {
-    (void)parser;
-    if (filename == NULL || error_msg == NULL) {
-        return -1;
-    }
-
-    char *content = NULL;
-    long length = 0;
-    int rc = read_whole_file(filename, &content, &length, error_msg);
-    if (rc != 0) {
-        return 2;
-    }
-
-    cJSON *root = cJSON_Parse(content);
-    free(content);
-
-    if (root == NULL) {
-        const char *cjson_error = cJSON_GetErrorPtr();
-        if (cjson_error != NULL) {
-            *error_msg = strdup(cjson_error);
-        } else {
-            *error_msg = strdup("cJSON_Parse failed");
-        }
-        return 2;
-    }
-
-    cJSON_Delete(root);
-    return 0;
+int cjson_set_max_depth(cjson_parser *parser, double value) {
+    return parser == NULL ? -1 : dom_set_limit(value, &parser->settings.max_depth);
 }
 
-int cjson_set_max_depth(cjson_parser *parser, double max_depth) {
-    if (parser == NULL) {
-        return -1;
-    }
-    (void)max_depth;
-    return 1;
-}
-
-int cjson_set_max_arg_num(cjson_parser *parser, double max_arg_num) {
-    if (parser == NULL) {
-        return -1;
-    }
-    (void)max_arg_num;
-    return 1;
+int cjson_set_max_arg_num(cjson_parser *parser, double value) {
+    return parser == NULL ? -1 : dom_set_limit(value, &parser->settings.max_args);
 }
 
 int cjson_set_silence(cjson_parser *parser, int silence) {
-    if (parser != NULL) {
-        parser->silence = silence;
-    }
+    if (parser == NULL) return -1;
+    parser->settings.silence = silence != 0;
     return 0;
 }
 

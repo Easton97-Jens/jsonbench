@@ -3,6 +3,7 @@
 
 AC_PREREQ([2.69])
 AC_INIT([jsonbench], [0.2], [airween@gmail.com])
+AC_USE_SYSTEM_EXTENSIONS
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_HEADERS([config.h])
@@ -15,6 +16,7 @@ PKGPATH=$($PKG_CONFIG --variable pc_path pkg-config)
 # Checks for programs.
 AC_PROG_CXX
 AC_PROG_CC
+AC_CHECK_FUNCS([newlocale uselocale freelocale duplocale])
 
 JSONC_CFLAGS=""
 JSONC_LDADD=""
@@ -696,7 +698,7 @@ AC_CHECK_LIB([m], [powl], [], AC_MSG_ERROR([libm is not installed.], 1))
 
 # Checks for library functions.
 
-AC_CONFIG_FILES([Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile tests/Makefile])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects])
 
 AC_MSG_NOTICE([JSON library summary:])

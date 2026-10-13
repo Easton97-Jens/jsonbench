@@ -1,67 +1,108 @@
 #include "janssonparser.h"
-
 #if HAVE_JANSSON
-
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
+#include "domarguments.h"
 #include <jansson.h>
 
-struct jansson_parser {
-    int silence;
-};
+struct jansson_parser { dom_settings settings; };
 
-int jansson_json_init(jansson_parser **parser, char **error_msg) {
-    assert(parser != NULL);
-    assert(error_msg != NULL);
+static int jansson_kind(void *node) {
+    if (json_is_object((json_t *)node)) return DOM_OBJECT;
+    if (json_is_array((json_t *)node)) return DOM_ARRAY;
+    return DOM_SCALAR;
+}
 
-    *parser = (jansson_parser *)calloc(1, sizeof(jansson_parser));
-    if (*parser == NULL) {
-        *error_msg = strdup("Unable to allocate Jansson parser");
-        return 1;
+static int jansson_child(void *node, dom_cursor *cursor, int first,
+                          void **child, const char **key, size_t *key_length) {
+    json_t *json = (json_t *)node;
+    if (json_is_array(json)) {
+        if (first) cursor->index = 0;
+        if (cursor->index >= json_array_size(json)) return 0;
+        *child = json_array_get(json, cursor->index++);
+    } else {
+        cursor->pointer = first ? json_object_iter(json) : json_object_iter_next(json, cursor->pointer);
+        if (cursor->pointer == NULL) return 0;
+        *key = json_object_iter_key(cursor->pointer);
+        *key_length = json_object_iter_key_len(cursor->pointer);
+        *child = json_object_iter_value(cursor->pointer);
     }
+    return 1;
+}
 
-    *error_msg = NULL;
+static int jansson_scalar(void *node, dom_value *value, char **error) {
+    json_t *json = (json_t *)node;
+    int length;
+    if (json_is_null(json)) { value->data = ""; value->length = 0; }
+    else if (json_is_boolean(json)) {
+        value->data = json_is_true(json) ? "true" : "false"; value->length = strlen(value->data);
+    } else if (json_is_string(json)) {
+        value->data = json_string_value(json); value->length = json_string_length(json);
+    } else if (json_is_integer(json)) {
+        length = snprintf(value->number, sizeof(value->number), "%" JSON_INTEGER_FORMAT, json_integer_value(json));
+        if (length < 0 || (size_t)length >= sizeof(value->number)) return dom_error(error, "Unable to format Jansson integer");
+        value->data = value->number; value->length = (size_t)length;
+        value->number_kind = DOM_INTEGER;
+    } else if (json_is_real(json)) {
+        double number = json_real_value(json);
+        if (!isfinite(number)) return dom_error(error, "Nonfinite Jansson number");
+        length = snprintf(value->number, sizeof(value->number), "%.17g", number);
+        if (length < 0 || (size_t)length >= sizeof(value->number)) return dom_error(error, "Unable to format Jansson real");
+        value->data = value->number; value->length = (size_t)length;
+        value->number_kind = DOM_REAL;
+    } else return dom_error(error, "Unexpected Jansson scalar type");
     return 0;
 }
+
+static const dom_adapter jansson_adapter = {jansson_kind, jansson_child, jansson_scalar};
+static const dom_input_policy jansson_policy = {DOM_NUL_ALLOWED, DOM_NUM_SIGNED};
 
 int jansson_parse_file(jansson_parser *parser, const char *filename, char **error_msg) {
-    (void)parser;
-    if (filename == NULL || error_msg == NULL) {
-        return -1;
-    }
+    char *content = NULL;
+    size_t length = 0;
+    size_t keys = 0;
+    dom_numbers numbers = {0};
+    dom_locale_guard locale = {0};
+    json_error_t native_error;
+    json_t *root = NULL;
+    int rc;
+    rc = dom_begin_numeric_file(parser, filename, "Invalid Jansson parser arguments",
+                                  &locale, &content, &length, error_msg);
+    if (rc != 0) return rc;
+    rc = dom_preflight_numbers(content, length, &parser->settings, &jansson_policy,
+                                &keys, &numbers, error_msg);
+    if (rc != 0) goto done;
+    /* Native objects coalesce keys; fail explicitly instead of silently losing
+     * occurrences. JSON_ALLOW_NUL preserves length-aware decoded strings. */
+    root = json_loadb(content, length, JSON_DECODE_ANY | JSON_ALLOW_NUL | JSON_REJECT_DUPLICATES, &native_error);
+    if (root == NULL) { rc = dom_error(error_msg, native_error.text); goto done; }
+    rc = dom_walk_numbers(root, &jansson_adapter, &parser->settings, &keys, &numbers, error_msg);
+ done:
+    if (root != NULL) json_decref(root);
+    free(numbers.spans);
+    free(content);
+    return dom_locale_finish(&locale, rc, error_msg);
+}
 
-    json_error_t jerror;
-    json_t *root = json_load_file(filename, 0, &jerror);
-    if (root == NULL) {
-        *error_msg = strdup(jerror.text);
-        return 2;
-    }
-
-    json_decref(root);
+int jansson_json_init(jansson_parser **parser, char **error_msg) {
+    if (error_msg == NULL) return -1;
+    *error_msg = NULL;
+    if (parser == NULL) return dom_error(error_msg, "Invalid Jansson parser output pointer");
+    *parser = (jansson_parser *)calloc(1, sizeof(**parser));
+    if (*parser == NULL) return dom_error(error_msg, "Unable to allocate Jansson parser");
+    dom_settings_init(&(*parser)->settings);
     return 0;
 }
 
-int jansson_set_max_depth(jansson_parser *parser, double max_depth) {
-    if (parser == NULL) {
-        return -1;
-    }
-    (void)max_depth;
-    return 1;
+int jansson_set_max_depth(jansson_parser *parser, double value) {
+    return parser == NULL ? -1 : dom_set_limit(value, &parser->settings.max_depth);
 }
 
-int jansson_set_max_arg_num(jansson_parser *parser, double max_arg_num) {
-    if (parser == NULL) {
-        return -1;
-    }
-    (void)max_arg_num;
-    return 1;
+int jansson_set_max_arg_num(jansson_parser *parser, double value) {
+    return parser == NULL ? -1 : dom_set_limit(value, &parser->settings.max_args);
 }
 
 int jansson_set_silence(jansson_parser *parser, int silence) {
-    if (parser != NULL) {
-        parser->silence = silence;
-    }
+    if (parser == NULL) return -1;
+    parser->settings.silence = silence != 0;
     return 0;
 }
 

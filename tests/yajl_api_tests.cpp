@@ -109,6 +109,26 @@ void invalid_arguments(Checks& checks) {
     checks.success("parser usable after invalid calls", parse(parser.value, "null"), ": \n");
 }
 
+bool status_and_diagnostic_agree(int status, const ErrorSlot& error) {
+    return (status == 1 && !error.get()) ||
+        (status == -1 && error.get() && *error.get());
+}
+
+void check_finalized_parser(Checks& checks, yajl_json_data* parser,
+        std::string_view label, std::string_view expected, const CapturedOutput& output) {
+    ErrorSlot complete_error;
+    checks.check(std::string(label) + ": rejects duplicate completion",
+        yajl_json_complete(parser, complete_error.slot()) == -1);
+    checks.check(std::string(label) + ": duplicate completion has fresh diagnostic",
+        complete_error.replaced() && complete_error.get() && *complete_error.get());
+    ErrorSlot chunk_error;
+    checks.check(std::string(label) + ": rejects chunks after completion",
+        yajl_json_process_chunk(parser, " ", 1, chunk_error.slot()) == -1);
+    checks.check(std::string(label) + ": post-completion chunk has fresh diagnostic",
+        chunk_error.replaced() && chunk_error.get() && *chunk_error.get());
+    checks.check(std::string(label) + ": failed repeated calls do not emit more output", output.read() == expected);
+}
+
 void split_case(Checks& checks, std::string_view name, std::string_view input,
         bool valid, std::string_view expected = "") {
     for (std::size_t split = 0; split <= input.size(); ++split) {
@@ -117,7 +137,8 @@ void split_case(Checks& checks, std::string_view name, std::string_view input,
         parser.value->silence = valid ? 0 : 1;
         CapturedOutput output;
         bool failed = false;
-        for (unsigned int part = 0; part < 2 && !failed; ++part) {
+        for (const unsigned int part : std::array{0u, 1u}) {
+            if (failed) break;
             const std::size_t offset = part ? split : 0;
             const std::size_t length = part ? input.size() - split : split;
             ErrorSlot error;
@@ -128,7 +149,7 @@ void split_case(Checks& checks, std::string_view name, std::string_view input,
                     static_cast<unsigned int>(length), error.slot());
             checks.check(std::string(label) + ": chunk replaces old diagnostic", error.replaced());
             checks.check(std::string(label) + ": chunk result and diagnostic agree",
-                (rc == 1 && !error.get()) || (rc == -1 && error.get() && *error.get()));
+                status_and_diagnostic_agree(rc, error));
             failed = rc != 1;
         }
         if (!failed) {
@@ -136,24 +157,12 @@ void split_case(Checks& checks, std::string_view name, std::string_view input,
             const int rc = yajl_json_complete(parser.value, error.slot());
             checks.check(std::string(label) + ": complete replaces old diagnostic", error.replaced());
             checks.check(std::string(label) + ": complete result and diagnostic agree",
-                (rc == 1 && !error.get()) || (rc == -1 && error.get() && *error.get()));
+                status_and_diagnostic_agree(rc, error));
             failed = rc != 1;
         }
         checks.check(std::string(label) + ": expected acceptance", failed != valid);
         checks.check(std::string(label) + ": byte-exact output", output.read() == (valid ? expected : ""));
-        if (valid) {
-            ErrorSlot complete_error;
-            checks.check(std::string(label) + ": rejects duplicate completion",
-                yajl_json_complete(parser.value, complete_error.slot()) == -1);
-            checks.check(std::string(label) + ": duplicate completion has fresh diagnostic",
-                complete_error.replaced() && complete_error.get() && *complete_error.get());
-            ErrorSlot chunk_error;
-            checks.check(std::string(label) + ": rejects chunks after completion",
-                yajl_json_process_chunk(parser.value, " ", 1, chunk_error.slot()) == -1);
-            checks.check(std::string(label) + ": post-completion chunk has fresh diagnostic",
-                chunk_error.replaced() && chunk_error.get() && *chunk_error.get());
-            checks.check(std::string(label) + ": failed repeated calls do not emit more output", output.read() == expected);
-        }
+        if (valid) check_finalized_parser(checks, parser.value, label, expected, output);
     }
 }
 
@@ -168,7 +177,7 @@ void chunk_boundaries(Checks& checks) {
     split_case(checks, "escaped quote and slash", R"({"quote":"a\"b\\c"})", true, "quote: a\"b\\c\n");
     constexpr auto nul_output = "a\0b: x\0y\n"sv;
     split_case(checks, "decoded NUL", R"({"a\u0000b":"x\u0000y"})", true,
-        std::string(nul_output));
+        nul_output);
     split_case(checks, "root and nested arrays", R"([[null,true],{"k":false},2])", true,
         "array.array.array: \narray.array.array: true\narray.array.k: false\narray.array: 2\n");
     split_case(checks, "dotted parents and siblings", R"({"a.b":[{"c.d":1},2],"after":3})", true,
@@ -344,7 +353,7 @@ void length_boundaries(Checks& checks) {
     constexpr auto expected = "a\0b.c\0d: v\0x\na\0b.after: false\nlast: \n"sv;
     checks.success("NUL parents restore with explicit lengths", parse(parser.value,
         R"({"a\u0000b":{"c\u0000d":"v\u0000x","after":false},"last":null})"),
-        std::string(expected));
+        expected);
     checks.success("dotted keys are not structural pop delimiters", parse(parser.value,
         R"({"a.b":{"c.d":1},"after":2})"), "a.b.c.d: 1\nafter: 2\n");
 }

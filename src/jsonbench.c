@@ -258,9 +258,6 @@ static int accept_option(int option, const char *argument,
                          const benchmark_engine **engine) {
     unsigned int iterations = 0;
     switch (option) {
-        case 'h':
-            showhelp();
-            return 1;
         case 'e':
             *engine = find_engine(argument);
             if (*engine != NULL) return 0;
@@ -279,6 +276,7 @@ static int accept_option(int option, const char *argument,
         case 's':
             settings->silence = 1;
             return 0;
+        case 'h':
         default:
             showhelp();
             return 1;
@@ -335,16 +333,17 @@ static int parse_once(const benchmark_engine *engine,
 }
 
 static int benchmark(const benchmark_engine *engine,
-                     const benchmark_settings *settings, double *times) {
+                     const benchmark_settings *settings, double *times,
+                     size_t count) {
     if (parse_once(engine, settings, 1, 1, NULL) != 0) return EXIT_FAILURE;
     int timed_silence = settings->silence;
-    if (settings->iterations > 1) timed_silence = 1;
-    for (int iteration = 0; iteration < settings->iterations; ++iteration) {
+    if (count > 1) timed_silence = 1;
+    for (size_t iteration = 0; iteration < count; ++iteration) {
         if (parse_once(engine, settings, timed_silence, 0, &times[iteration]) != 0)
             return EXIT_FAILURE;
     }
-    print_stats(times, settings->iterations);
-    if (settings->iterations > 1 && !settings->silence) {
+    print_stats(times, (int)count);
+    if (count > 1 && !settings->silence) {
         double elapsed;
         if (parse_once(engine, settings, 0, 0, &elapsed) != 0) return EXIT_FAILURE;
     }
@@ -371,7 +370,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Memory allocation error\n");
         return EXIT_FAILURE;
     }
-    const int result = benchmark(engine, &settings, times);
+    const int result = benchmark(engine, &settings, times, count);
     free(times);
     return result;
 }

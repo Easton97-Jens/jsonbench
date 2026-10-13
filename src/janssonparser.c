@@ -5,12 +5,14 @@
 
 struct jansson_parser { dom_settings settings; };
 
-static int jansson_kind(const void *node) {
-    return json_is_object((json_t *)node) ? DOM_OBJECT : json_is_array((json_t *)node) ? DOM_ARRAY : DOM_SCALAR;
+static int jansson_kind(void *node) {
+    if (json_is_object((json_t *)node)) return DOM_OBJECT;
+    if (json_is_array((json_t *)node)) return DOM_ARRAY;
+    return DOM_SCALAR;
 }
 
-static int jansson_child(const void *node, dom_cursor *cursor, int first,
-                          const void **child, const char **key, size_t *key_length) {
+static int jansson_child(void *node, dom_cursor *cursor, int first,
+                          void **child, const char **key, size_t *key_length) {
     json_t *json = (json_t *)node;
     if (json_is_array(json)) {
         if (first) cursor->index = 0;
@@ -26,7 +28,7 @@ static int jansson_child(const void *node, dom_cursor *cursor, int first,
     return 1;
 }
 
-static int jansson_scalar(const void *node, dom_value *value, char **error) {
+static int jansson_scalar(void *node, dom_value *value, char **error) {
     json_t *json = (json_t *)node;
     int length;
     if (json_is_null(json)) { value->data = ""; value->length = 0; }
@@ -54,7 +56,8 @@ static const dom_adapter jansson_adapter = {jansson_kind, jansson_child, jansson
 
 int jansson_parse_file(jansson_parser *parser, const char *filename, char **error_msg) {
     char *content = NULL;
-    size_t length = 0, keys = 0;
+    size_t length = 0;
+    size_t keys = 0;
     dom_numbers numbers = {0};
     dom_locale_guard locale = {0};
     json_error_t native_error;

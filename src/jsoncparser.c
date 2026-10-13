@@ -6,13 +6,15 @@
 
 struct jsonc_parser { dom_settings settings; };
 
-static int jsonc_kind(const void *node) {
+static int jsonc_kind(void *node) {
     enum json_type type = json_object_get_type((struct json_object *)node);
-    return type == json_type_object ? DOM_OBJECT : type == json_type_array ? DOM_ARRAY : DOM_SCALAR;
+    if (type == json_type_object) return DOM_OBJECT;
+    if (type == json_type_array) return DOM_ARRAY;
+    return DOM_SCALAR;
 }
 
-static int jsonc_child(const void *node, dom_cursor *cursor, int first,
-                       const void **child, const char **key, size_t *key_length) {
+static int jsonc_child(void *node, dom_cursor *cursor, int first,
+                       void **child, const char **key, size_t *key_length) {
     struct json_object *object = (struct json_object *)node;
     if (jsonc_kind(node) == DOM_ARRAY) {
         if (first) cursor->index = 0;
@@ -29,7 +31,7 @@ static int jsonc_child(const void *node, dom_cursor *cursor, int first,
     return 1;
 }
 
-static int jsonc_scalar(const void *node, dom_value *value, char **error) {
+static int jsonc_scalar(void *node, dom_value *value, char **error) {
     struct json_object *object = (struct json_object *)node;
     switch (json_object_get_type(object)) {
         case json_type_null: value->data = ""; value->length = 0; break;
@@ -68,49 +70,104 @@ static void jsonc_unicode_escape(char *output, size_t *used, unsigned int code) 
  * Preserve strict native grammar checking by converting already verified
  * scalar UTF-8 to equivalent JSON Unicode escapes. This is a representation
  * conversion only; escaped characters and structural bytes are unchanged. */
-static int jsonc_ascii_input(const char *data, size_t length, char **ascii,
-                              size_t *ascii_length, char **error) {
-    size_t position = 0, used = 0, output_length = length;
-    char *output;
+static int jsonc_ascii_size(const char *data, size_t length, size_t *ascii_length,
+                             char **error) {
+    size_t position = 0;
+    size_t output_length = length;
     while (position < length) {
         unsigned char first = (unsigned char)data[position];
-        size_t start = position, encoded;
-        if (first < 0x80) { ++position; continue; }
+        size_t start = position;
+        size_t encoded;
+        if (first < 0x80) {
+            ++position;
+            continue;
+        }
         /* The preflight above guarantees successful scalar decoding. */
         if (!dom_utf8(data, length, &position)) return dom_error(error, "Invalid JSON-C Unicode input");
         encoded = first < 0xf0 ? 6 : 12;
         if (output_length > SIZE_MAX - encoded - 1) return dom_error(error, "JSON-C input size overflow");
         output_length += encoded - (position - start);
     }
-    if (output_length == length) { *ascii = NULL; *ascii_length = length; return 0; }
+    *ascii_length = output_length;
+    return 0;
+}
+
+static unsigned int jsonc_next_codepoint(const char *data, size_t *position) {
+    unsigned int code = (unsigned char)data[*position];
+    size_t count;
+    size_t i;
+    ++*position;
+    if (code < 0xe0) {
+        code &= 31;
+        count = 1;
+    } else if (code < 0xf0) {
+        code &= 15;
+        count = 2;
+    } else {
+        code &= 7;
+        count = 3;
+    }
+    for (i = 0; i < count; ++i) {
+        code = code * 64 + ((unsigned char)data[*position] & 63);
+        ++*position;
+    }
+    return code;
+}
+
+static void jsonc_surrogate_escapes(char *output, size_t *used, unsigned int code) {
+    unsigned int offset = code - 0x10000;
+    jsonc_unicode_escape(output, used, 0xd800 + (offset >> 10));
+    jsonc_unicode_escape(output, used, 0xdc00 + (offset & 1023));
+}
+
+static size_t jsonc_ascii_write(const char *data, size_t length, char *output) {
+    size_t position = 0;
+    size_t used = 0;
+    while (position < length) {
+        unsigned char first = (unsigned char)data[position];
+        unsigned int code;
+        if (first < 0x80) {
+            output[used] = (char)first;
+            ++used;
+            ++position;
+            continue;
+        }
+        code = jsonc_next_codepoint(data, &position);
+        if (code <= 0xffff) jsonc_unicode_escape(output, &used, code);
+        else jsonc_surrogate_escapes(output, &used, code);
+    }
+    return used;
+}
+
+static int jsonc_ascii_input(const char *data, size_t length, char **ascii,
+                              size_t *ascii_length, char **error) {
+    size_t output_length;
+    size_t used;
+    char *output;
+    int result = jsonc_ascii_size(data, length, &output_length, error);
+    if (result != 0) return result;
+    if (output_length == length) {
+        *ascii = NULL;
+        *ascii_length = length;
+        return 0;
+    }
     output = (char *)malloc(output_length + 1);
     if (output == NULL) return dom_error(error, "Unable to allocate JSON-C Unicode input");
-    position = 0;
-    while (position < length) {
-        unsigned int code = (unsigned char)data[position++];
-        size_t count, i;
-        if (code < 0x80) { output[used++] = (char)code; continue; }
-        if (code < 0xe0) { code &= 31; count = 1; }
-        else if (code < 0xf0) { code &= 15; count = 2; }
-        else { code &= 7; count = 3; }
-        for (i = 0; i < count; ++i) code = code * 64 + ((unsigned char)data[position++] & 63);
-        if (code <= 0xffff) {
-            jsonc_unicode_escape(output, &used, code);
-        } else {
-            unsigned int offset = code - 0x10000;
-            jsonc_unicode_escape(output, &used, 0xd800 + (offset >> 10));
-            jsonc_unicode_escape(output, &used, 0xdc00 + (offset & 1023));
-        }
-    }
+    used = jsonc_ascii_write(data, length, output);
     output[used] = '\0';
-    *ascii = output; *ascii_length = used;
+    *ascii = output;
+    *ascii_length = used;
     return 0;
 }
 
 int jsonc_parse_file(jsonc_parser *parser, const char *filename, char **error_msg) {
-    char *content = NULL, *ascii = NULL;
+    char *content = NULL;
+    char *ascii = NULL;
     const char *input;
-    size_t length = 0, keys = 0, native_keys = 0, end;
+    size_t length = 0;
+    size_t keys = 0;
+    size_t native_keys = 0;
+    size_t end;
     dom_numbers numbers = {0};
     dom_locale_guard locale = {0};
     struct json_tokener *tokener = NULL;

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -21,6 +22,11 @@ struct simdjson_parser {
 };
 
 namespace {
+
+class ParserError final : public std::runtime_error {
+  public:
+    using std::runtime_error::runtime_error;
+};
 
 bool valid_limit(double value) {
     return std::isfinite(value) && value >= 0 && value <= UINT_MAX &&
@@ -68,7 +74,7 @@ class Arguments {
             std::fwrite(": ", 1, 2, stdout) != 2 ||
             std::fwrite(value.data(), 1, value.size(), stdout) != value.size() ||
             std::fputc('\n', stdout) == EOF)
-            throw std::runtime_error("Unable to write JSON argument output");
+            throw ParserError("Unable to write JSON argument output");
     }
 
   public:
@@ -156,7 +162,7 @@ extern "C" int simdjson_json_init(simdjson_parser **parser, char **error_msg) {
     if (!parser || !error_msg) return -1;
     *parser = nullptr;
     *error_msg = nullptr;
-    try { *parser = new simdjson_parser{}; return 0; }
+    try { *parser = std::make_unique<simdjson_parser>().release(); return 0; }
     catch (const std::exception& e) { *error_msg = strdup(e.what()); return 1; }
     catch (...) { *error_msg = strdup("Unable to initialize simdjson parser"); return 1; }
 }
@@ -176,7 +182,7 @@ extern "C" int simdjson_parse_file(simdjson_parser *parser, const char *filename
         if (!document.at_end())
             throw std::invalid_argument("Unexpected content after JSON document");
         if (!parser->silence && std::fflush(stdout) == EOF)
-            throw std::runtime_error("Unable to write JSON argument output");
+            throw ParserError("Unable to write JSON argument output");
         return 0;
     } catch (const std::exception& e) {
         *error_msg = strdup(e.what());
@@ -206,7 +212,7 @@ extern "C" int simdjson_set_silence(simdjson_parser *parser, int silence) {
 }
 
 extern "C" int simdjson_json_cleanup(simdjson_parser *parser) {
-    delete parser;
+    const std::unique_ptr<simdjson_parser> owned(parser);
     return 0;
 }
 

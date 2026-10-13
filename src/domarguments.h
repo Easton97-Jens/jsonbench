@@ -15,7 +15,8 @@
 #include <string.h>
 
 typedef struct {
-    unsigned int max_depth, max_args;
+    unsigned int max_depth;
+    unsigned int max_args;
     int silence;
 } dom_settings;
 
@@ -31,7 +32,10 @@ static int dom_error(char **error, const char *message) {
 }
 
 #if HAVE_NEWLOCALE && HAVE_USELOCALE && HAVE_FREELOCALE && HAVE_DUPLOCALE && defined(LC_NUMERIC_MASK)
-typedef struct { locale_t current, previous; } dom_locale_guard;
+typedef struct {
+    locale_t current;
+    locale_t previous;
+} dom_locale_guard;
 
 /* JSON numbers always use '.', regardless of the embedding application's
  * process or thread locale. Change only this thread and restore its previous
@@ -91,7 +95,8 @@ static int dom_set_limit(double value, unsigned int *limit) {
 static int dom_read_file(const char *filename, char **content, size_t *length,
                          char **error) {
     FILE *file = fopen(filename, "rb");
-    size_t used = 0, capacity = 16384;
+    size_t used = 0;
+    size_t capacity = 16384;
     char *buffer;
     if (file == NULL) return dom_error(error, "Unable to open JSON file");
     buffer = (char *)malloc(capacity);
@@ -162,8 +167,10 @@ static int dom_code_unit(const char *data, size_t length, size_t *position,
 /* Strict scalar UTF-8, excluding overlong forms, surrogates and > U+10ffff. */
 static int dom_utf8(const char *data, size_t length, size_t *position) {
     unsigned char first = (unsigned char)data[*position];
-    size_t count, i;
-    unsigned int code, minimum;
+    size_t count;
+    size_t i;
+    unsigned int code;
+    unsigned int minimum;
     if (first < 0x80) { ++*position; return 1; }
     if (first >= 0xc2 && first <= 0xdf) { count = 2; code = first & 31; minimum = 0x80; }
     else if (first >= 0xe0 && first <= 0xef) { count = 3; code = first & 15; minimum = 0x800; }
@@ -192,7 +199,8 @@ typedef struct {
 
 typedef struct {
     dom_number_span *spans;
-    size_t count, capacity;
+    size_t count;
+    size_t capacity;
 } dom_numbers;
 
 static int dom_remember_number(dom_numbers *numbers, const char *data,
@@ -209,131 +217,308 @@ static int dom_remember_number(dom_numbers *numbers, const char *data,
     }
     numbers->spans[numbers->count].data = data;
     numbers->spans[numbers->count].length = length;
-    numbers->spans[numbers->count++].kind = kind;
+    numbers->spans[numbers->count].kind = kind;
+    ++numbers->count;
     return 0;
 }
 
 /* Tokens are checked before native parsing so hostile long strings/numbers
  * and deep structures cannot first allocate an unbounded native token/stack.
  * No structure acceptance depends on this scan: native parsing follows. */
+typedef struct {
+    const char *data;
+    size_t length;
+    size_t position;
+    size_t depth;
+    size_t arguments;
+    const dom_settings *settings;
+    int nul_policy;
+    int number_policy;
+    size_t *keys;
+    dom_numbers *numbers;
+    char **error;
+} dom_scan;
+
+static int dom_scan_argument(dom_scan *scan) {
+    ++scan->arguments;
+    if (scan->arguments > scan->settings->max_args)
+        return dom_error(scan->error, "Argument number limit exceeded");
+    return 0;
+}
+
+static size_t dom_codepoint_length(unsigned int code) {
+    if (code < 0x80) return 1;
+    if (code < 0x800) return 2;
+    return 3;
+}
+
+static int dom_scan_surrogate_pair(dom_scan *scan, size_t *decoded) {
+    unsigned int low;
+    if (scan->length - scan->position < 2 || scan->data[scan->position] != '\\' ||
+        scan->data[scan->position + 1] != 'u')
+        return dom_error(scan->error, "Unpaired Unicode surrogate");
+    scan->position += 2;
+    if (!dom_code_unit(scan->data, scan->length, &scan->position, &low) ||
+        low < 0xdc00 || low > 0xdfff)
+        return dom_error(scan->error, "Invalid Unicode surrogate pair");
+    *decoded += 4;
+    return 0;
+}
+
+static int dom_scan_unicode_escape(dom_scan *scan, size_t *decoded, int *contains_nul) {
+    unsigned int code;
+    if (!dom_code_unit(scan->data, scan->length, &scan->position, &code))
+        return dom_error(scan->error, "Invalid Unicode escape");
+    if (code >= 0xd800 && code <= 0xdbff) return dom_scan_surrogate_pair(scan, decoded);
+    if (code >= 0xdc00 && code <= 0xdfff)
+        return dom_error(scan->error, "Unpaired Unicode surrogate");
+    if (code == 0) *contains_nul = 1;
+    *decoded += dom_codepoint_length(code);
+    return 0;
+}
+
+static int dom_scan_escape(dom_scan *scan, size_t *decoded, int *contains_nul) {
+    unsigned char c;
+    if (scan->position == scan->length) return dom_error(scan->error, "Truncated JSON escape");
+    c = (unsigned char)scan->data[scan->position];
+    ++scan->position;
+    if (c == 'u') return dom_scan_unicode_escape(scan, decoded, contains_nul);
+    switch (c) {
+        case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't':
+            ++*decoded;
+            return 0;
+        default:
+            return dom_error(scan->error, "Invalid JSON escape");
+    }
+}
+
+static int dom_scan_string_character(dom_scan *scan, unsigned char c,
+                                      size_t *decoded, int *contains_nul) {
+    size_t start;
+    if (c < 0x20) return dom_error(scan->error, "Invalid control character in JSON string");
+    if (c == '\\') return dom_scan_escape(scan, decoded, contains_nul);
+    if (c < 0x80) {
+        ++*decoded;
+        return 0;
+    }
+    --scan->position;
+    start = scan->position;
+    if (!dom_utf8(scan->data, scan->length, &scan->position))
+        return dom_error(scan->error, "Invalid UTF-8 in JSON string");
+    *decoded += scan->position - start;
+    return 0;
+}
+
+static int dom_scan_string_role(dom_scan *scan, int contains_nul) {
+    size_t end = scan->position;
+    while (end < scan->length && dom_space((unsigned char)scan->data[end])) ++end;
+    if (end < scan->length && scan->data[end] == ':') {
+        ++*scan->keys;
+        if (contains_nul && scan->nul_policy != DOM_NUL_ALLOWED)
+            return dom_error(scan->error, "Native DOM cannot preserve NUL in object keys");
+        return 0;
+    }
+    if (contains_nul && scan->nul_policy == DOM_NUL_FORBIDDEN)
+        return dom_error(scan->error, "Native DOM cannot preserve NUL in string values");
+    return dom_scan_argument(scan);
+}
+
+static int dom_scan_string(dom_scan *scan) {
+    size_t decoded = 0;
+    int contains_nul = 0;
+    int closed = 0;
+    ++scan->position;
+    while (scan->position < scan->length) {
+        unsigned char c = (unsigned char)scan->data[scan->position];
+        int result;
+        ++scan->position;
+        if (c == '"') {
+            closed = 1;
+            break;
+        }
+        result = dom_scan_string_character(scan, c, &decoded, &contains_nul);
+        if (result != 0) return result;
+        if (decoded >= JSON_STRING_SIZE)
+            return dom_error(scan->error, "Argument name or value too long");
+    }
+    if (!closed) return dom_error(scan->error, "Truncated JSON string");
+    return dom_scan_string_role(scan, contains_nul);
+}
+
+static int dom_digit(unsigned char c) {
+    return c >= '0' && c <= '9';
+}
+
+static void dom_scan_digits(dom_scan *scan) {
+    while (scan->position < scan->length && dom_digit((unsigned char)scan->data[scan->position]))
+        ++scan->position;
+}
+
+static int dom_scan_integer_part(dom_scan *scan) {
+    if (scan->position == scan->length || !dom_digit((unsigned char)scan->data[scan->position]))
+        return dom_error(scan->error, "Invalid JSON number");
+    if (scan->data[scan->position] == '0') ++scan->position;
+    else dom_scan_digits(scan);
+    return 0;
+}
+
+static int dom_scan_fraction(dom_scan *scan, int *real) {
+    size_t start;
+    if (scan->position == scan->length || scan->data[scan->position] != '.') return 0;
+    *real = 1;
+    ++scan->position;
+    start = scan->position;
+    dom_scan_digits(scan);
+    if (scan->position == start) return dom_error(scan->error, "Invalid JSON fraction");
+    return 0;
+}
+
+static int dom_scan_exponent(dom_scan *scan, int *real) {
+    size_t start;
+    unsigned char c;
+    if (scan->position == scan->length) return 0;
+    c = (unsigned char)scan->data[scan->position];
+    if (c != 'e' && c != 'E') return 0;
+    *real = 1;
+    ++scan->position;
+    if (scan->position < scan->length &&
+        (scan->data[scan->position] == '+' || scan->data[scan->position] == '-')) ++scan->position;
+    start = scan->position;
+    dom_scan_digits(scan);
+    if (scan->position == start) return dom_error(scan->error, "Invalid JSON exponent");
+    return 0;
+}
+
+static const char *dom_integer_maximum(int policy, int negative) {
+    if (policy == DOM_NUM_DOUBLE) return "9007199254740992";
+    if (negative) return "9223372036854775808";
+    if (policy == DOM_NUM_SIGNED) return "9223372036854775807";
+    return "18446744073709551615";
+}
+
+static int dom_scan_integer_range(dom_scan *scan, size_t digits, int negative) {
+    const char *maximum = dom_integer_maximum(scan->number_policy, negative);
+    size_t integer_length = scan->position - digits;
+    size_t maximum_length = strlen(maximum);
+    if (integer_length > maximum_length ||
+        (integer_length == maximum_length && memcmp(scan->data + digits, maximum, maximum_length) > 0))
+        return dom_error(scan->error, "JSON integer is outside the native DOM's lossless range");
+    return 0;
+}
+
+static int dom_scan_real_range(dom_scan *scan, size_t start, size_t length) {
+    char number[JSON_STRING_SIZE];
+    char *end;
+    double value;
+    memcpy(number, scan->data + start, length);
+    number[length] = '\0';
+    errno = 0;
+    value = strtod(number, &end);
+    if (*end != '\0' || !isfinite(value) || (errno == ERANGE && value == 0.0))
+        return dom_error(scan->error, "JSON real is outside the native DOM's finite range");
+    return 0;
+}
+
+static int dom_scan_number_separator(const dom_scan *scan) {
+    unsigned char c;
+    if (scan->position == scan->length) return 1;
+    c = (unsigned char)scan->data[scan->position];
+    return dom_space(c) || c == ',' || c == ']' || c == '}';
+}
+
+static int dom_scan_number_range(dom_scan *scan, size_t start, size_t digits,
+                                 size_t length, int real, int negative) {
+    if (scan->number_policy == DOM_NUM_RAW) return 0;
+    if (real) return dom_scan_real_range(scan, start, length);
+    return dom_scan_integer_range(scan, digits, negative);
+}
+
+static int dom_scan_number(dom_scan *scan) {
+    size_t start = scan->position;
+    size_t digits;
+    size_t length;
+    int negative = scan->data[start] == '-';
+    int real = 0;
+    int result;
+    if (negative) ++scan->position;
+    digits = scan->position;
+    result = dom_scan_integer_part(scan);
+    if (result != 0) return result;
+    result = dom_scan_fraction(scan, &real);
+    if (result != 0) return result;
+    result = dom_scan_exponent(scan, &real);
+    if (result != 0) return result;
+    if (!dom_scan_number_separator(scan)) return dom_error(scan->error, "Invalid JSON number separator");
+    length = scan->position - start;
+    if (length >= JSON_STRING_SIZE) return dom_error(scan->error, "Argument value too long");
+    result = dom_scan_number_range(scan, start, digits, length, real, negative);
+    if (result != 0) return result;
+    result = dom_scan_argument(scan);
+    if (result != 0) return result;
+    return dom_remember_number(scan->numbers, scan->data + start, length,
+                               real ? DOM_REAL : DOM_INTEGER, scan->error);
+}
+
+static const char *dom_literal(unsigned char c) {
+    if (c == 't') return "true";
+    if (c == 'f') return "false";
+    return "null";
+}
+
+static int dom_scan_literal(dom_scan *scan, unsigned char c) {
+    const char *literal = dom_literal(c);
+    size_t length = strlen(literal);
+    if (scan->length - scan->position < length ||
+        memcmp(scan->data + scan->position, literal, length) != 0)
+        return dom_error(scan->error, "Invalid JSON literal");
+    scan->position += length;
+    return dom_scan_argument(scan);
+}
+
+static int dom_scan_token(dom_scan *scan) {
+    unsigned char c = (unsigned char)scan->data[scan->position];
+    if (dom_space(c) || c == ':' || c == ',') {
+        ++scan->position;
+        return 0;
+    }
+    switch (c) {
+        case '{': case '[':
+            ++scan->depth;
+            if (scan->depth > scan->settings->max_depth)
+                return dom_error(scan->error, "JSON depth limit exceeded");
+            ++scan->position;
+            return 0;
+        case '}': case ']':
+            if (scan->depth > 0) --scan->depth;
+            ++scan->position;
+            return 0;
+        case '"':
+            return dom_scan_string(scan);
+        case 't': case 'f': case 'n':
+            return dom_scan_literal(scan, c);
+        default:
+            if (c == '-' || dom_digit(c)) return dom_scan_number(scan);
+            return dom_error(scan->error, "Unexpected character in JSON input");
+    }
+}
+
 static int dom_preflight_impl(const char *data, size_t length, const dom_settings *settings,
                                int nul_policy, int number_policy, size_t *keys,
                                dom_numbers *numbers, char **error) {
-    size_t position = 0, depth = 0, arguments = 0;
+    dom_scan scan;
+    memset(&scan, 0, sizeof(scan));
+    scan.data = data;
+    scan.length = length;
+    scan.settings = settings;
+    scan.nul_policy = nul_policy;
+    scan.number_policy = number_policy;
+    scan.keys = keys;
+    scan.numbers = numbers;
+    scan.error = error;
     *keys = 0;
-    while (position < length) {
-        unsigned char c = (unsigned char)data[position];
-        if (dom_space(c) || c == ':' || c == ',') { ++position; continue; }
-        if (c == '{' || c == '[') {
-            if (++depth > settings->max_depth) return dom_error(error, "JSON depth limit exceeded");
-            ++position; continue;
-        }
-        if (c == '}' || c == ']') { if (depth > 0) --depth; ++position; continue; }
-        if (c == '"') {
-            size_t decoded = 0, end;
-            int closed = 0, contains_nul = 0;
-            ++position;
-            while (position < length) {
-                c = (unsigned char)data[position++];
-                if (c == '"') { closed = 1; break; }
-                if (c < 0x20) return dom_error(error, "Invalid control character in JSON string");
-                if (c == '\\') {
-                    unsigned int code;
-                    if (position == length) return dom_error(error, "Truncated JSON escape");
-                    c = (unsigned char)data[position++];
-                    if (c == 'u') {
-                        if (!dom_code_unit(data, length, &position, &code)) return dom_error(error, "Invalid Unicode escape");
-                        if (code >= 0xd800 && code <= 0xdbff) {
-                            unsigned int low;
-                            if (length - position < 2 || data[position] != '\\' || data[position + 1] != 'u')
-                                return dom_error(error, "Unpaired Unicode surrogate");
-                            position += 2;
-                            if (!dom_code_unit(data, length, &position, &low) || low < 0xdc00 || low > 0xdfff)
-                                return dom_error(error, "Invalid Unicode surrogate pair");
-                            decoded += 4;
-                        } else {
-                            if (code >= 0xdc00 && code <= 0xdfff) return dom_error(error, "Unpaired Unicode surrogate");
-                            if (code == 0) contains_nul = 1;
-                            decoded += code < 0x80 ? 1 : code < 0x800 ? 2 : 3;
-                        }
-                    } else if (c == '"' || c == '\\' || c == '/' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == 't') {
-                        ++decoded;
-                    } else return dom_error(error, "Invalid JSON escape");
-                } else if (c >= 0x80) {
-                    size_t start = --position;
-                    if (!dom_utf8(data, length, &position)) return dom_error(error, "Invalid UTF-8 in JSON string");
-                    decoded += position - start;
-                } else ++decoded;
-                if (decoded >= JSON_STRING_SIZE) return dom_error(error, "Argument name or value too long");
-            }
-            if (!closed) return dom_error(error, "Truncated JSON string");
-            end = position;
-            while (end < length && dom_space((unsigned char)data[end])) ++end;
-            if (end < length && data[end] == ':') {
-                ++*keys;
-                if (contains_nul && nul_policy != DOM_NUL_ALLOWED) return dom_error(error, "Native DOM cannot preserve NUL in object keys");
-            } else {
-                if (contains_nul && nul_policy == DOM_NUL_FORBIDDEN) return dom_error(error, "Native DOM cannot preserve NUL in string values");
-                if (++arguments > settings->max_args) return dom_error(error, "Argument number limit exceeded");
-            }
-            continue;
-        }
-        if (c == '-' || (c >= '0' && c <= '9')) {
-            size_t start = position, digits, token_length;
-            int negative = c == '-', real = 0;
-            if (negative) ++position;
-            digits = position;
-            if (position == length || data[position] < '0' || data[position] > '9') return dom_error(error, "Invalid JSON number");
-            if (data[position] == '0') ++position;
-            else while (position < length && data[position] >= '0' && data[position] <= '9') ++position;
-            if (position < length && data[position] == '.') {
-                size_t fraction = ++position;
-                real = 1;
-                while (position < length && data[position] >= '0' && data[position] <= '9') ++position;
-                if (position == fraction) return dom_error(error, "Invalid JSON fraction");
-            }
-            if (position < length && (data[position] == 'e' || data[position] == 'E')) {
-                size_t exponent;
-                real = 1; ++position;
-                if (position < length && (data[position] == '+' || data[position] == '-')) ++position;
-                exponent = position;
-                while (position < length && data[position] >= '0' && data[position] <= '9') ++position;
-                if (position == exponent) return dom_error(error, "Invalid JSON exponent");
-            }
-            if (position < length && !dom_space((unsigned char)data[position]) && data[position] != ',' && data[position] != ']' && data[position] != '}')
-                return dom_error(error, "Invalid JSON number separator");
-            token_length = position - start;
-            if (token_length >= JSON_STRING_SIZE) return dom_error(error, "Argument value too long");
-            if (!real && number_policy != DOM_NUM_RAW) {
-                const char *maximum = number_policy == DOM_NUM_DOUBLE ? "9007199254740992" :
-                    negative ? "9223372036854775808" :
-                    number_policy == DOM_NUM_SIGNED ? "9223372036854775807" : "18446744073709551615";
-                size_t integer_length = position - digits, max_length = strlen(maximum);
-                if (integer_length > max_length || (integer_length == max_length && memcmp(data + digits, maximum, max_length) > 0))
-                    return dom_error(error, "JSON integer is outside the native DOM's lossless range");
-            }
-            if (real && number_policy != DOM_NUM_RAW) {
-                char number[JSON_STRING_SIZE], *end;
-                double value;
-                memcpy(number, data + start, token_length); number[token_length] = '\0';
-                errno = 0; value = strtod(number, &end);
-                if (*end != '\0' || !isfinite(value) || (errno == ERANGE && value == 0.0))
-                    return dom_error(error, "JSON real is outside the native DOM's finite range");
-            }
-            if (++arguments > settings->max_args) return dom_error(error, "Argument number limit exceeded");
-            if (dom_remember_number(numbers, data + start, token_length,
-                                      real ? DOM_REAL : DOM_INTEGER, error) != 0) return 2;
-            continue;
-        }
-        if (c == 't' || c == 'f' || c == 'n') {
-            const char *literal = c == 't' ? "true" : c == 'f' ? "false" : "null";
-            size_t count = strlen(literal);
-            if (length - position < count || memcmp(data + position, literal, count) != 0) return dom_error(error, "Invalid JSON literal");
-            position += count;
-            if (++arguments > settings->max_args) return dom_error(error, "Argument number limit exceeded");
-            continue;
-        }
-        return dom_error(error, "Unexpected character in JSON input");
+    while (scan.position < scan.length) {
+        int result = dom_scan_token(&scan);
+        if (result != 0) return result;
     }
     return 0;
 }
@@ -370,142 +555,249 @@ static inline int dom_preflight_numbers(const char *data, size_t length,
 
 enum { DOM_SCALAR = 0, DOM_OBJECT = 1, DOM_ARRAY = 2 };
 /* Large/aligned enough for native cursor structs; adapters use memcpy. */
-typedef union { void *pointer; size_t index; void *slots[8]; long double alignment; } dom_cursor;
-typedef struct { const char *data; size_t length; char number[128]; int number_kind; } dom_value;
+typedef union {
+    void *pointer;
+    size_t index;
+    void *slots[8];
+    long double alignment;
+} dom_cursor;
+
 typedef struct {
-    int (*kind)(const void *node);
-    int (*child)(const void *node, dom_cursor *cursor, int first,
-                  const void **child, const char **key, size_t *key_length);
-    int (*scalar)(const void *node, dom_value *value, char **error);
+    const char *data;
+    size_t length;
+    char number[128];
+    int number_kind;
+} dom_value;
+
+typedef struct {
+    int (*kind)(void *node);
+    int (*child)(void *node, dom_cursor *cursor, int first,
+                  void **child, const char **key, size_t *key_length);
+    int (*scalar)(void *node, dom_value *value, char **error);
 } dom_adapter;
 
 typedef struct {
-    const void *node;
+    void *node;
     dom_cursor cursor;
     int first;
-    size_t prefix_before, key_length;
+    size_t prefix_before;
+    size_t key_length;
     char *key_before;
 } dom_frame;
 
-static int dom_walk_impl(const void *root, const dom_adapter *adapter,
-                          const dom_settings *settings, size_t *object_keys,
-                          const dom_numbers *numbers, char **error) {
-    dom_frame *frames = NULL;
-    size_t depth = 0, capacity = 0, prefix_length = 0, key_length = 0;
-    unsigned int arguments = 0;
-    size_t number_position = 0;
-    char prefix[JSON_STRING_SIZE], key[JSON_STRING_SIZE];
-    const void *node = root;
-    int result = 0, entering = 1;
-    *object_keys = 0;
-    for (;;) {
-        if (entering) {
-            int kind = adapter->kind(node);
-            if (kind != DOM_SCALAR) {
-                dom_frame *frame;
-                size_t new_length = kind == DOM_ARRAY && depth == 0 ? 5 :
-                    prefix_length + (prefix_length ? 1 : 0) + key_length;
-                if (depth >= settings->max_depth) { result = dom_error(error, "JSON depth limit exceeded"); break; }
-                if (new_length >= JSON_STRING_SIZE) { result = dom_error(error, "Argument name too long"); break; }
-                if (depth == capacity) {
-                    dom_frame *grown;
-                    size_t next = capacity ? capacity * 2 : 16;
-                    if (next < capacity || next > SIZE_MAX / sizeof(*frames)) { result = dom_error(error, "DOM traversal stack overflow"); break; }
-                    grown = (dom_frame *)realloc(frames, next * sizeof(*frames));
-                    if (grown == NULL) { result = dom_error(error, "Unable to allocate DOM traversal stack"); break; }
-                    frames = grown; capacity = next;
-                }
-                frame = &frames[depth];
-                memset(frame, 0, sizeof(*frame));
-                frame->node = node; frame->first = 1;
-                frame->prefix_before = prefix_length; frame->key_length = key_length;
-                frame->key_before = (char *)malloc(key_length + 1);
-                if (frame->key_before == NULL) { result = dom_error(error, "Unable to allocate DOM traversal key"); break; }
-                memcpy(frame->key_before, key, key_length);
-                if (kind == DOM_ARRAY && depth == 0) {
-                    memcpy(prefix, "array", 5); memcpy(key, "array", 5);
-                    prefix_length = key_length = 5;
-                } else {
-                    if (prefix_length) prefix[prefix_length++] = '.';
-                    memcpy(prefix + prefix_length, key, key_length);
-                    prefix_length += key_length;
-                }
-                ++depth;
-            } else {
-                dom_value value;
-                size_t name_length = prefix_length + (prefix_length ? 1 : 0) + key_length;
-                memset(&value, 0, sizeof(value));
-                if (arguments >= settings->max_args) { result = dom_error(error, "Argument number limit exceeded"); break; }
-                if (name_length >= JSON_STRING_SIZE) { result = dom_error(error, "Argument name too long"); break; }
-                result = adapter->scalar(node, &value, error);
-                if (result != 0) break;
-                if (numbers != NULL && value.number_kind != DOM_NOT_NUMBER) {
-                    const dom_number_span *span;
-                    if (number_position >= numbers->count) {
-                        result = dom_error(error, "Native DOM has unexpected numeric arguments"); break;
-                    }
-                    span = &numbers->spans[number_position++];
-                    if (value.number_kind != DOM_ANY_NUMBER && value.number_kind != span->kind) {
-                        result = dom_error(error, "Native DOM numeric type differs from source token"); break;
-                    }
-                    value.data = span->data; value.length = span->length;
-                }
-                if (value.length >= JSON_STRING_SIZE) { result = dom_error(error, "Argument value too long"); break; }
-                ++arguments;
-                if (!settings->silence) {
-                    int ok = 1;
-                    if (prefix_length) {
-                        ok = fwrite(prefix, 1, prefix_length, stdout) == prefix_length;
-                        ok = (fputc('.', stdout) != EOF) && ok;
-                    }
-                    ok = (fwrite(key, 1, key_length, stdout) == key_length) && ok;
-                    ok = (fwrite(": ", 1, 2, stdout) == 2) && ok;
-                    if (value.length) ok = (fwrite(value.data, 1, value.length, stdout) == value.length) && ok;
-                    ok = (fputc('\n', stdout) != EOF) && ok;
-                    if (!ok) { result = dom_error(error, "Unable to write JSON argument output"); break; }
-                }
-            }
-        }
-        entering = 0;
-        while (depth) {
-            dom_frame *frame = &frames[depth - 1];
-            const char *child_key = NULL;
-            size_t child_key_length = 0;
-            if (adapter->child(frame->node, &frame->cursor, frame->first,
-                                &node, &child_key, &child_key_length)) {
-                frame->first = 0;
-                if (adapter->kind(frame->node) == DOM_OBJECT) {
-                    ++*object_keys;
-                    if (child_key_length >= JSON_STRING_SIZE) { result = dom_error(error, "Argument name too long"); goto done; }
-                    memcpy(key, child_key, child_key_length); key_length = child_key_length;
-                }
-                entering = 1;
-                break;
-            }
-            prefix_length = frame->prefix_before;
-            key_length = frame->key_length;
-            memcpy(key, frame->key_before, key_length);
-            free(frame->key_before);
-            --depth;
-        }
-        if (!entering) break;
-    }
-done:
-    while (depth) free(frames[--depth].key_before);
-    free(frames);
-    if (result == 0 && numbers != NULL && number_position != numbers->count)
-        result = dom_error(error, "Native DOM omitted numeric arguments from source");
-    if (result == 0 && !settings->silence && fflush(stdout) != 0)
-        result = dom_error(error, "Unable to flush JSON argument output");
-    return result;
+typedef struct {
+    dom_frame *frames;
+    size_t depth;
+    size_t capacity;
+    size_t prefix_length;
+    size_t key_length;
+    unsigned int arguments;
+    size_t number_position;
+    char prefix[JSON_STRING_SIZE];
+    char key[JSON_STRING_SIZE];
+    void *node;
+    const dom_adapter *adapter;
+    const dom_settings *settings;
+    const dom_numbers *numbers;
+    size_t *object_keys;
+    char **error;
+} dom_walk_state;
+
+static int dom_walk_grow_frames(dom_walk_state *state) {
+    size_t next;
+    dom_frame *grown;
+    if (state->depth < state->capacity) return 0;
+    next = state->capacity ? state->capacity * 2 : 16;
+    if (next < state->capacity || next > SIZE_MAX / sizeof(*state->frames))
+        return dom_error(state->error, "DOM traversal stack overflow");
+    grown = (dom_frame *)realloc(state->frames, next * sizeof(*state->frames));
+    if (grown == NULL) return dom_error(state->error, "Unable to allocate DOM traversal stack");
+    state->frames = grown;
+    state->capacity = next;
+    return 0;
 }
 
-static inline int dom_walk(const void *root, const dom_adapter *adapter,
+static size_t dom_walk_prefix_size(const dom_walk_state *state, int kind) {
+    if (kind == DOM_ARRAY && state->depth == 0) return 5;
+    return state->prefix_length + (state->prefix_length ? 1 : 0) + state->key_length;
+}
+
+static void dom_walk_push_prefix(dom_walk_state *state, int kind) {
+    if (kind == DOM_ARRAY && state->depth == 0) {
+        memcpy(state->prefix, "array", 5);
+        memcpy(state->key, "array", 5);
+        state->prefix_length = 5;
+        state->key_length = 5;
+        return;
+    }
+    if (state->prefix_length) {
+        state->prefix[state->prefix_length] = '.';
+        ++state->prefix_length;
+    }
+    memcpy(state->prefix + state->prefix_length, state->key, state->key_length);
+    state->prefix_length += state->key_length;
+}
+
+static int dom_walk_begin(dom_walk_state *state, int kind) {
+    dom_frame *frame;
+    int result;
+    if (state->depth >= state->settings->max_depth)
+        return dom_error(state->error, "JSON depth limit exceeded");
+    if (dom_walk_prefix_size(state, kind) >= JSON_STRING_SIZE)
+        return dom_error(state->error, "Argument name too long");
+    result = dom_walk_grow_frames(state);
+    if (result != 0) return result;
+    frame = &state->frames[state->depth];
+    memset(frame, 0, sizeof(*frame));
+    frame->node = state->node;
+    frame->first = 1;
+    frame->prefix_before = state->prefix_length;
+    frame->key_length = state->key_length;
+    frame->key_before = (char *)malloc(state->key_length + 1);
+    if (frame->key_before == NULL) return dom_error(state->error, "Unable to allocate DOM traversal key");
+    memcpy(frame->key_before, state->key, state->key_length);
+    dom_walk_push_prefix(state, kind);
+    ++state->depth;
+    return 0;
+}
+
+static void dom_walk_pop(dom_walk_state *state) {
+    dom_frame *frame = &state->frames[state->depth - 1];
+    state->prefix_length = frame->prefix_before;
+    state->key_length = frame->key_length;
+    memcpy(state->key, frame->key_before, state->key_length);
+    free(frame->key_before);
+    --state->depth;
+}
+
+static int dom_walk_number_source(dom_walk_state *state, dom_value *value) {
+    const dom_number_span *span;
+    if (state->numbers == NULL || value->number_kind == DOM_NOT_NUMBER) return 0;
+    if (state->number_position >= state->numbers->count)
+        return dom_error(state->error, "Native DOM has unexpected numeric arguments");
+    span = &state->numbers->spans[state->number_position];
+    ++state->number_position;
+    if (value->number_kind != DOM_ANY_NUMBER && value->number_kind != span->kind)
+        return dom_error(state->error, "Native DOM numeric type differs from source token");
+    value->data = span->data;
+    value->length = span->length;
+    return 0;
+}
+
+static int dom_walk_write(const dom_walk_state *state, const dom_value *value) {
+    struct {
+        const char *data;
+        size_t length;
+    } parts[] = {
+        {state->prefix, state->prefix_length},
+        {".", state->prefix_length ? 1U : 0U},
+        {state->key, state->key_length},
+        {": ", 2},
+        {value->data, value->length},
+        {"\n", 1}
+    };
+    size_t i;
+    for (i = 0; i < sizeof(parts) / sizeof(parts[0]); ++i) {
+        if (parts[i].length == 0) continue;
+        if (fwrite(parts[i].data, 1, parts[i].length, stdout) != parts[i].length)
+            return dom_error(state->error, "Unable to write JSON argument output");
+    }
+    return 0;
+}
+
+static int dom_walk_argument(dom_walk_state *state) {
+    dom_value value;
+    size_t name_length = state->prefix_length + (state->prefix_length ? 1 : 0) + state->key_length;
+    int result;
+    if (state->arguments >= state->settings->max_args)
+        return dom_error(state->error, "Argument number limit exceeded");
+    if (name_length >= JSON_STRING_SIZE) return dom_error(state->error, "Argument name too long");
+    memset(&value, 0, sizeof(value));
+    result = state->adapter->scalar(state->node, &value, state->error);
+    if (result != 0) return result;
+    result = dom_walk_number_source(state, &value);
+    if (result != 0) return result;
+    if (value.length >= JSON_STRING_SIZE) return dom_error(state->error, "Argument value too long");
+    ++state->arguments;
+    if (state->settings->silence) return 0;
+    return dom_walk_write(state, &value);
+}
+
+static int dom_walk_enter(dom_walk_state *state) {
+    int kind = state->adapter->kind(state->node);
+    if (kind == DOM_SCALAR) return dom_walk_argument(state);
+    return dom_walk_begin(state, kind);
+}
+
+static int dom_walk_object_child(dom_walk_state *state, const char *key,
+                                  size_t length, int *entering) {
+    ++*state->object_keys;
+    if (length >= JSON_STRING_SIZE) return dom_error(state->error, "Argument name too long");
+    memcpy(state->key, key, length);
+    state->key_length = length;
+    *entering = 1;
+    return 0;
+}
+
+static int dom_walk_next(dom_walk_state *state, int *entering) {
+    *entering = 0;
+    while (state->depth) {
+        dom_frame *frame = &state->frames[state->depth - 1];
+        const char *child_key = NULL;
+        size_t child_key_length = 0;
+        if (state->adapter->child(frame->node, &frame->cursor, frame->first,
+                                  &state->node, &child_key, &child_key_length)) {
+            frame->first = 0;
+            if (state->adapter->kind(frame->node) == DOM_OBJECT)
+                return dom_walk_object_child(state, child_key, child_key_length, entering);
+            *entering = 1;
+            return 0;
+        }
+        dom_walk_pop(state);
+    }
+    return 0;
+}
+
+static int dom_walk_finish(dom_walk_state *state, int result) {
+    while (state->depth) dom_walk_pop(state);
+    free(state->frames);
+    if (result != 0) return result;
+    if (state->numbers != NULL && state->number_position != state->numbers->count)
+        return dom_error(state->error, "Native DOM omitted numeric arguments from source");
+    if (!state->settings->silence && fflush(stdout) != 0)
+        return dom_error(state->error, "Unable to flush JSON argument output");
+    return 0;
+}
+
+static int dom_walk_impl(void *root, const dom_adapter *adapter,
+                          const dom_settings *settings, size_t *object_keys,
+                          const dom_numbers *numbers, char **error) {
+    dom_walk_state state;
+    int entering = 1;
+    int result = 0;
+    memset(&state, 0, sizeof(state));
+    state.node = root;
+    state.adapter = adapter;
+    state.settings = settings;
+    state.numbers = numbers;
+    state.object_keys = object_keys;
+    state.error = error;
+    *object_keys = 0;
+    while (entering) {
+        result = dom_walk_enter(&state);
+        if (result != 0) break;
+        result = dom_walk_next(&state, &entering);
+        if (result != 0) break;
+    }
+    return dom_walk_finish(&state, result);
+}
+
+static inline int dom_walk(void *root, const dom_adapter *adapter,
                             const dom_settings *settings, size_t *object_keys, char **error) {
     return dom_walk_impl(root, adapter, settings, object_keys, NULL, error);
 }
 
-static inline int dom_walk_numbers(const void *root, const dom_adapter *adapter,
+static inline int dom_walk_numbers(void *root, const dom_adapter *adapter,
                                     const dom_settings *settings, size_t *object_keys,
                                     const dom_numbers *numbers, char **error) {
     return dom_walk_impl(root, adapter, settings, object_keys, numbers, error);

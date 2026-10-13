@@ -8,6 +8,7 @@ AM_CXXFLAGS = -Wall -std=c++17
 check_PROGRAMS = pathhandler_tests jsoncons_api_tests yajl_api_tests \
                  sax_adapter_api_tests dom_adapter_api_tests cpp_adapter_api_tests
 TESTS = $(check_PROGRAMS)
+noinst_HEADERS = test_support.h
 
 pathhandler_tests_SOURCES = pathhandler_tests.cpp
 

@@ -5,12 +5,14 @@
 
 struct yyjson_parser { dom_settings settings; };
 
-static int yyjson_kind(const void *node) {
-    return yyjson_is_obj((yyjson_val *)node) ? DOM_OBJECT : yyjson_is_arr((yyjson_val *)node) ? DOM_ARRAY : DOM_SCALAR;
+static int yyjson_kind(void *node) {
+    if (yyjson_is_obj((yyjson_val *)node)) return DOM_OBJECT;
+    if (yyjson_is_arr((yyjson_val *)node)) return DOM_ARRAY;
+    return DOM_SCALAR;
 }
 
-static int yyjson_child(const void *node, dom_cursor *cursor, int first,
-                         const void **child, const char **key, size_t *key_length) {
+static int yyjson_child(void *node, dom_cursor *cursor, int first,
+                         void **child, const char **key, size_t *key_length) {
     yyjson_val *json = (yyjson_val *)node;
     if (yyjson_is_arr(json)) {
         yyjson_arr_iter iter;
@@ -33,7 +35,7 @@ static int yyjson_child(const void *node, dom_cursor *cursor, int first,
     return 1;
 }
 
-static int yyjson_scalar(const void *node, dom_value *value, char **error) {
+static int yyjson_scalar(void *node, dom_value *value, char **error) {
     yyjson_val *json = (yyjson_val *)node;
     if (yyjson_is_null(json)) { value->data = ""; value->length = 0; }
     else if (yyjson_is_bool(json)) {
@@ -50,7 +52,8 @@ static const dom_adapter yyjson_adapter = {yyjson_kind, yyjson_child, yyjson_sca
 
 int yyjson_parse_file(yyjson_parser *parser, const char *filename, char **error_msg) {
     char *content = NULL;
-    size_t length = 0, keys = 0;
+    size_t length = 0;
+    size_t keys = 0;
     yyjson_read_err native_error;
     yyjson_doc *doc = NULL;
     int rc;

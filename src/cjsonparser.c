@@ -5,14 +5,16 @@
 
 struct cjson_parser { dom_settings settings; };
 
-static int cjson_kind(const void *node) {
-    return cJSON_IsObject((const cJSON *)node) ? DOM_OBJECT : cJSON_IsArray((const cJSON *)node) ? DOM_ARRAY : DOM_SCALAR;
+static int cjson_kind(void *node) {
+    if (cJSON_IsObject((cJSON *)node)) return DOM_OBJECT;
+    if (cJSON_IsArray((cJSON *)node)) return DOM_ARRAY;
+    return DOM_SCALAR;
 }
 
-static int cjson_child(const void *node, dom_cursor *cursor, int first,
-                        const void **child, const char **key, size_t *key_length) {
-    const cJSON *json = (const cJSON *)node;
-    const cJSON *item = first ? json->child : ((const cJSON *)cursor->pointer)->next;
+static int cjson_child(void *node, dom_cursor *cursor, int first,
+                        void **child, const char **key, size_t *key_length) {
+    cJSON *json = (cJSON *)node;
+    cJSON *item = first ? json->child : ((cJSON *)cursor->pointer)->next;
     if (item == NULL) return 0;
     cursor->pointer = (void *)item; *child = item;
     if (cJSON_IsObject(json)) {
@@ -21,8 +23,8 @@ static int cjson_child(const void *node, dom_cursor *cursor, int first,
     return 1;
 }
 
-static int cjson_scalar(const void *node, dom_value *value, char **error) {
-    const cJSON *json = (const cJSON *)node;
+static int cjson_scalar(void *node, dom_value *value, char **error) {
+    cJSON *json = (cJSON *)node;
     if (cJSON_IsNull(json)) { value->data = ""; value->length = 0; }
     else if (cJSON_IsBool(json)) {
         value->data = cJSON_IsTrue(json) ? "true" : "false"; value->length = strlen(value->data);
@@ -43,7 +45,8 @@ static const dom_adapter cjson_adapter = {cjson_kind, cjson_child, cjson_scalar}
 
 int cjson_parse_file(cjson_parser *parser, const char *filename, char **error_msg) {
     char *content = NULL;
-    size_t length = 0, keys = 0;
+    size_t length = 0;
+    size_t keys = 0;
     dom_numbers numbers = {0};
     dom_locale_guard locale = {0};
     const char *end = NULL;

@@ -12,18 +12,32 @@
 #include "../src/cjsonparser.h"
 #include "../src/yyjsonparser.h"
 static unsigned checks;
-static char directory[] = "/tmp/jsonbench-dom-api-XXXXXX";
-static char valid[512], invalid[512], native_invalid[512], empty[512], root[512], decimal[512], missing[512];
+/* mkdtemp atomically creates this private directory with mode 0700. */
+static char directory[] = ".jsonbench-dom-api-XXXXXX";
+static int directory_created;
+static char valid[512];
+static char invalid[512];
+static char native_invalid[512];
+static char empty[512];
+static char root[512];
+static char decimal[512];
+static char missing[512];
 static void cleanup_fixtures(void) {
+    if (!directory_created) return;
     unlink(valid); unlink(invalid); unlink(native_invalid); unlink(empty); unlink(root); unlink(decimal);
     rmdir(directory);
 }
 static void fixture(char *path, size_t capacity, const char *name, const char *content) {
     FILE *file;
+    size_t written;
+    int close_result;
     int length = snprintf(path, capacity, "%s/%s.json", directory, name);
     if (length < 0 || (size_t)length >= capacity) exit(1);
     file = fopen(path, "wb");
-    if (file == NULL || fwrite(content, 1, strlen(content), file) != strlen(content) || fclose(file) != 0) exit(1);
+    if (file == NULL) exit(1);
+    written = fwrite(content, 1, strlen(content), file);
+    close_result = fclose(file);
+    if (written != strlen(content) || close_result != 0) exit(1);
 }
 
 #define CHECK(condition) do { if (!(condition)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#condition); exit(1); } ++checks; } while (0)
@@ -109,7 +123,8 @@ static void locale_checks(void) {
     static const char *names[] = {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "fr_FR.utf8"};
     char *original = strdup(setlocale(LC_NUMERIC, NULL));
     const char *selected = NULL;
-    locale_t caller_locale, previous;
+    locale_t caller_locale;
+    locale_t previous;
     CHECK(original != NULL);
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
         if (setlocale(LC_NUMERIC, names[i]) != NULL && strcmp(localeconv()->decimal_point, ",") == 0) {
@@ -147,8 +162,9 @@ int main(void) {
     puts("SKIP DOM C API checks: no DOM engines enabled");
     return 77;
 #endif
-    CHECK(mkdtemp(directory) != NULL);
     CHECK(atexit(cleanup_fixtures) == 0);
+    CHECK(mkdtemp(directory) != NULL);
+    directory_created = 1;
     fixture(valid, sizeof(valid), "valid", "{\"x\":[1,true,null,{\"k\":\"value\"}]}");
     fixture(invalid, sizeof(invalid), "invalid", "{\"x\":\"\\q\"}");
     fixture(native_invalid, sizeof(native_invalid), "native-invalid", "{\"a\":1,}");

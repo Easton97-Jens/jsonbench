@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -46,16 +47,16 @@ class TemporaryAllocator {
         if (size > budget)
             throw RapidJsonInputError("RapidJSON token/state allocation limit exceeded");
         // RapidJSON 1.1's GenericReader stack passes char* storage to Realloc
-        // and Free. A char array supplies alignment for its scalar state values.
+        // and Free. Byte-array allocation supplies alignment for its scalar states.
         // Allocate first: an exception leaves the original stack allocation live.
-        auto replacement = size == 0 ? nullptr : std::make_unique<char[]>(size);
+        auto replacement = size == 0 ? nullptr : std::make_unique<std::byte[]>(size);
         if (data != nullptr && size != 0)
-            std::copy_n(data, std::min(old_size, size), replacement.get());
-        const std::unique_ptr<char[]> original(data);
-        return replacement.release();
+            std::memcpy(replacement.get(), data, std::min(old_size, size));
+        const std::unique_ptr<std::byte[]> original(reinterpret_cast<std::byte*>(data));
+        return reinterpret_cast<char*>(replacement.release());
     }
     static void Free(char* data) noexcept {
-        const std::unique_ptr<char[]> allocation(data);
+        const std::unique_ptr<std::byte[]> allocation(reinterpret_cast<std::byte*>(data));
     }
 };
 
@@ -254,7 +255,7 @@ extern "C" int rj_json_init(rj_parser** parser, char** error_msg) {
     *error_msg = nullptr;
     if (parser == nullptr) return -1;
     *parser = nullptr;
-    return at_c_boundary([&] {
+    return at_c_boundary([parser] {
         *parser = std::make_unique<rj_parser>().release();
         return 0;
     }, error_msg, 1);
@@ -265,7 +266,7 @@ extern "C" int rj_parse_buffer(rj_parser* parser, const char* buf,
     if (error_msg == nullptr) return -1;
     *error_msg = nullptr;
     if (parser == nullptr || buf == nullptr) return -1;
-    return at_c_boundary([&] {
+    return at_c_boundary([parser, buf, len, error_msg] {
         rapidjson::MemoryStream input(buf, len);
         return parse(parser, input, error_msg);
     }, error_msg);
@@ -276,7 +277,7 @@ extern "C" int rj_parse_file(rj_parser* parser, const char* filename,
     if (error_msg == nullptr) return -1;
     *error_msg = nullptr;
     if (parser == nullptr || filename == nullptr) return -1;
-    return at_c_boundary([&] {
+    return at_c_boundary([parser, filename, error_msg] {
         const std::unique_ptr<std::FILE, FileCloser> file(std::fopen(filename, "rb"));
         if (!file) {
             *error_msg = strdup("Unable to open JSON file");

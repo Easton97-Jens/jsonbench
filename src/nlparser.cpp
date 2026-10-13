@@ -245,7 +245,7 @@ extern "C" int nl_json_init(nl_parser** parser, char** error_msg) {
     if (error_msg) *error_msg = nullptr;
     if (parser) *parser = nullptr;
     if (!parser || !error_msg) return -1;
-    return at_c_boundary([&] {
+    return at_c_boundary([parser] {
         *parser = std::make_unique<nl_parser>().release();
         return 0;
     }, error_msg, -1);
@@ -261,7 +261,7 @@ extern "C" int nl_parse_buffer(nl_parser* parser, const char* buffer,
     if (error_msg) *error_msg = nullptr;
     if (!parser || !buffer || !error_msg)
         return fail(error_msg, "Invalid NlohmannJSON parser arguments", -1);
-    return at_c_boundary([&] {
+    return at_c_boundary([parser, buffer, length, error_msg] {
         CheckedInputBuffer source(buffer, length);
         return parse(parser, source, error_msg);
     }, error_msg);
@@ -271,7 +271,7 @@ extern "C" int nl_parse_file(nl_parser* parser, const char* filename, char** err
     if (error_msg) *error_msg = nullptr;
     if (!parser || !filename || !error_msg)
         return fail(error_msg, "Invalid NlohmannJSON parser arguments", -1);
-    return at_c_boundary([&] {
+    return at_c_boundary([parser, filename, error_msg] {
         const std::unique_ptr<std::FILE, FileCloser> file(std::fopen(filename, "rb"));
         if (!file) return fail(error_msg, "Unable to open JSON file", -1);
         CheckedInputBuffer source(file.get());

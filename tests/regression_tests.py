@@ -89,6 +89,9 @@ VALID_CASES = [
     Case("embedded-nul", b'{"a\\u0000b":"x\\u0000y"}', b"a\0b: x\0y\n", 1),
     Case("timing-like-value", b'{"Time":"0.000000000 sec","blank":"\\n"}',
          b"Time: 0.000000000 sec\nblank: \n\n", 2),
+    Case("numeric-token-order",
+         b'{"12":"34","word":"1e+20","list":[11,0.25,{"n":1.20,"s":"-1"},null,true]}',
+         b"12: 34\nword: 1e+20\nlist.list: 11\nlist.list: 0.25\nlist.list.n: 1.20\nlist.list.s: -1\nlist.list: \nlist.list: true\n", 8),
     Case("integer-boundaries",
          b'{"min":-9223372036854775808,"max":9223372036854775807,"u":18446744073709551615,"beyond":18446744073709551616,"negative":-9223372036854775809}',
          b"min: -9223372036854775808\nmax: 9223372036854775807\nu: 18446744073709551615\nbeyond: 18446744073709551616\nnegative: -9223372036854775809\n", 5),
@@ -247,7 +250,8 @@ class Suite:
                 path = TESTS_DIR / fixture
                 self.success(engine, f"existing valid parse/silent: {fixture}", path, silent=True)
                 if fixture in reference:
-                    self.success(engine, f"existing argument output vs YAJL: {fixture}", path, reference[fixture])
+                    label = "existing argument output repeatability" if engine == "YAJL" else "existing argument output vs YAJL"
+                    self.success(engine, f"{label}: {fixture}", path, reference[fixture])
                 else:
                     self.report("SKIP", f"[{engine}] output comparison: {fixture} (YAJL unavailable; compatibility untested)")
             self.rejected(engine, "reject existing invalid fixture: test05.json", TESTS_DIR / "test05.json")
@@ -359,8 +363,10 @@ class Suite:
 
     def operational(self, engine):
         self.rejected(engine, "missing input file diagnostic", self.temp / "does-not-exist.json")
-        path = self.fixture("iterations", b'{"x":1,"x":2}')
-        self.success(engine, "three timed iterations print arguments once", path, b"x: 1\nx: 2\n", ["-n", "3", "-a", "2"])
+        # Repeated-key behavior has its own mandatory golden case. Unique keys
+        # here isolate state reset/output count across timed iterations.
+        path = self.fixture("iterations", b'{"x":1,"y":2}')
+        self.success(engine, "three timed iterations print arguments once", path, b"x: 1\ny: 2\n", ["-n", "3", "-a", "2"])
         self.success(engine, "three silent iterations emit no arguments", path, options=["-n", "3", "-a", "2"], silent=True)
         self.limit_rejected(engine, "timed iterations retain argument limit", path, ["-n", "3", "-a", "1"])
         for option in ("-d", "-a"):

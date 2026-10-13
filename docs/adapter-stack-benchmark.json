@@ -1,0 +1,769 @@
+{
+  "schema_version": 1,
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "artifacts": {
+    "binary": {
+      "path": "/workspace/digitalwave-jsonbench/src/jsonbench",
+      "sha256": "06b4c09fc3566a0c102f97a451cfc52382ce5c37d7b1d0e8b7d01970cf5f9c7b"
+    },
+    "config": {
+      "path": "/workspace/digitalwave-jsonbench/config.h",
+      "sha256": "0c699c66839ddb24ebd9138ff6ccdfbc7dff21f89038b7b425ac5d1b20cb50e8"
+    },
+    "baseline": {
+      "path": "/workspace/.jsonbench-tools/jsonbench-dom-baseline",
+      "sha256": "3e1abf98905ec7f1cf42a97b48b7a2eefa5898c96d143f5bac07dd8af8933bbb"
+    }
+  },
+  "method": {
+    "samples": 5,
+    "warmups": 1,
+    "cli": "-s -a GENERATED_ARGUMENT_COUNT -n 1 -e ENGINE INPUT",
+    "input": "root array of identical objects: short ASCII string, exact integer, boolean",
+    "timing": "CLI parser elapsed seconds; independent fresh processes after warmups",
+    "rss": "Linux wait4 child peak RSS in KiB via a small compiled C launcher",
+    "file_buffer_size": 524288,
+    "yajl_input": "attempt every requested size; streaming adapters have no FILE_BUFFER_SIZE file cap",
+    "compiler": [
+      "cc"
+    ],
+    "caveat": "Original DOM adapter only parses/discards a DOM. SAX also builds argument paths and enforces argument/size limits. Synthetic cached-file workload; no ModSecurity performance conclusion."
+  },
+  "inputs": [
+    {
+      "target_bytes": 409600,
+      "bytes": 409564,
+      "objects": 5319,
+      "arguments": 15957,
+      "sha256": "44674cc69b5e076c937e298d937305cd9e94247acb815790977ab4c54a7c06cb"
+    },
+    {
+      "target_bytes": 5242880,
+      "bytes": 5242854,
+      "objects": 68089,
+      "arguments": 204267,
+      "sha256": "07d23f5e5b8f3d65dcc9143ce41c6e7ca16b1fde5af69d8aa279247d92d8c9bc"
+    },
+    {
+      "target_bytes": 33554432,
+      "bytes": 33554368,
+      "objects": 435771,
+      "arguments": 1307313,
+      "sha256": "47932b32f3c7a4dcc2f1b736cad541044911399454d5565f090b67f1978d97d7"
+    }
+  ],
+  "runs": [
+    {
+      "variant": "jsoncons_dom",
+      "input_bytes": 409564,
+      "status": "ok",
+      "warmups": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.00834565,
+          "wall_seconds": 0.012779053000485874,
+          "peak_rss_kib": 5232,
+          "user_seconds": 0.006377,
+          "system_seconds": 0.004688,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.005942113,
+          "wall_seconds": 0.010221734000879223,
+          "peak_rss_kib": 5332,
+          "user_seconds": 0.004348,
+          "system_seconds": 0.003788,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.004869709,
+          "wall_seconds": 0.008874135999576538,
+          "peak_rss_kib": 5352,
+          "user_seconds": 0.003706,
+          "system_seconds": 0.003955,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.00533557,
+          "wall_seconds": 0.008604189999459777,
+          "peak_rss_kib": 5360,
+          "user_seconds": 0.007672,
+          "system_seconds": 0.0,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.004097096,
+          "wall_seconds": 0.007158143000197015,
+          "peak_rss_kib": 5300,
+          "user_seconds": 0.0,
+          "system_seconds": 0.006136,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.00524869,
+          "wall_seconds": 0.010258599000735558,
+          "peak_rss_kib": 5376,
+          "user_seconds": 0.0,
+          "system_seconds": 0.009088,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        }
+      ],
+      "summary": {
+        "parser_seconds": {
+          "mean": 0.0050986356,
+          "sample_stdev": 0.0006792638139429335,
+          "min": 0.004097096,
+          "max": 0.005942113
+        },
+        "wall_seconds": {
+          "mean": 0.009023360400169622,
+          "sample_stdev": 0.0012883052222716844,
+          "min": 0.007158143000197015,
+          "max": 0.010258599000735558
+        },
+        "peak_rss_kib": {
+          "mean": 5344,
+          "sample_stdev": 29.257477676655586,
+          "min": 5300,
+          "max": 5376
+        }
+      }
+    },
+    {
+      "variant": "jsoncons_sax",
+      "input_bytes": 409564,
+      "status": "ok",
+      "warmups": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.003161407,
+          "wall_seconds": 0.0067568189988378435,
+          "peak_rss_kib": 2764,
+          "user_seconds": 0.002657,
+          "system_seconds": 0.002666
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.002873044,
+          "wall_seconds": 0.005499205999512924,
+          "peak_rss_kib": 2740,
+          "user_seconds": 0.004632,
+          "system_seconds": 0.0
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.00277684,
+          "wall_seconds": 0.005453899000713136,
+          "peak_rss_kib": 2700,
+          "user_seconds": 0.004666,
+          "system_seconds": 0.0
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.00461121,
+          "wall_seconds": 0.00773739499891235,
+          "peak_rss_kib": 2760,
+          "user_seconds": 0.002508,
+          "system_seconds": 0.004315
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.003301368,
+          "wall_seconds": 0.005965616999674239,
+          "peak_rss_kib": 2816,
+          "user_seconds": 0.005132,
+          "system_seconds": 0.0
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.002905733,
+          "wall_seconds": 0.006117556999015505,
+          "peak_rss_kib": 2812,
+          "user_seconds": 0.005262,
+          "system_seconds": 0.0
+        }
+      ],
+      "summary": {
+        "parser_seconds": {
+          "mean": 0.003293639,
+          "sample_stdev": 0.0007632996630983143,
+          "min": 0.00277684,
+          "max": 0.00461121
+        },
+        "wall_seconds": {
+          "mean": 0.006154734799565631,
+          "sample_stdev": 0.0009304367069201241,
+          "min": 0.005453899000713136,
+          "max": 0.00773739499891235
+        },
+        "peak_rss_kib": {
+          "mean": 2765.6,
+          "sample_stdev": 49.20162598939186,
+          "min": 2700,
+          "max": 2816
+        }
+      }
+    },
+    {
+      "variant": "yajl",
+      "input_bytes": 409564,
+      "status": "ok",
+      "warmups": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.002089875,
+          "wall_seconds": 0.005340036999768927,
+          "peak_rss_kib": 2640,
+          "user_seconds": 0.004199,
+          "system_seconds": 0.0
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.00253173,
+          "wall_seconds": 0.005423010999948019,
+          "peak_rss_kib": 2624,
+          "user_seconds": 0.004345,
+          "system_seconds": 0.0
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.001685196,
+          "wall_seconds": 0.004349725999418297,
+          "peak_rss_kib": 2596,
+          "user_seconds": 0.003362,
+          "system_seconds": 0.0
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.001964957,
+          "wall_seconds": 0.004700282999692718,
+          "peak_rss_kib": 2656,
+          "user_seconds": 0.0,
+          "system_seconds": 0.003939
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.002041793,
+          "wall_seconds": 0.004723529000330018,
+          "peak_rss_kib": 2680,
+          "user_seconds": 0.003755,
+          "system_seconds": 0.0
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.002082905,
+          "wall_seconds": 0.0048981210002239095,
+          "peak_rss_kib": 2656,
+          "user_seconds": 0.00415,
+          "system_seconds": 0.0
+        }
+      ],
+      "summary": {
+        "parser_seconds": {
+          "mean": 0.0020613161999999997,
+          "sample_stdev": 0.00030532272889796457,
+          "min": 0.001685196,
+          "max": 0.00253173
+        },
+        "wall_seconds": {
+          "mean": 0.004818933999922592,
+          "sample_stdev": 0.0003919553305277555,
+          "min": 0.004349725999418297,
+          "max": 0.005423010999948019
+        },
+        "peak_rss_kib": {
+          "mean": 2642.4,
+          "sample_stdev": 32.69250678672408,
+          "min": 2596,
+          "max": 2680
+        }
+      }
+    },
+    {
+      "variant": "jsoncons_dom",
+      "input_bytes": 5242854,
+      "status": "ok",
+      "warmups": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.068317148,
+          "wall_seconds": 0.07272912799999176,
+          "peak_rss_kib": 39016,
+          "user_seconds": 0.062874,
+          "system_seconds": 0.008857,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.067531686,
+          "wall_seconds": 0.07280279899896414,
+          "peak_rss_kib": 39048,
+          "user_seconds": 0.056217,
+          "system_seconds": 0.0113,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.066968959,
+          "wall_seconds": 0.07150823099982517,
+          "peak_rss_kib": 39024,
+          "user_seconds": 0.057439,
+          "system_seconds": 0.012905,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.067843485,
+          "wall_seconds": 0.0728891399994609,
+          "peak_rss_kib": 39004,
+          "user_seconds": 0.054984,
+          "system_seconds": 0.01637,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.063197693,
+          "wall_seconds": 0.06810393699925044,
+          "peak_rss_kib": 39020,
+          "user_seconds": 0.048484,
+          "system_seconds": 0.018276,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.068296128,
+          "wall_seconds": 0.07449504699980025,
+          "peak_rss_kib": 39048,
+          "user_seconds": 0.056787,
+          "system_seconds": 0.015881,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        }
+      ],
+      "summary": {
+        "parser_seconds": {
+          "mean": 0.06676759019999999,
+          "sample_stdev": 0.0020532008687933322,
+          "min": 0.063197693,
+          "max": 0.068296128
+        },
+        "wall_seconds": {
+          "mean": 0.07195983079946018,
+          "sample_stdev": 0.0024017385127535207,
+          "min": 0.06810393699925044,
+          "max": 0.07449504699980025
+        },
+        "peak_rss_kib": {
+          "mean": 39028.8,
+          "sample_stdev": 19.05780679931455,
+          "min": 39004,
+          "max": 39048
+        }
+      }
+    },
+    {
+      "variant": "jsoncons_sax",
+      "input_bytes": 5242854,
+      "status": "ok",
+      "warmups": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.037217954,
+          "wall_seconds": 0.04177322000032291,
+          "peak_rss_kib": 2700,
+          "user_seconds": 0.035879,
+          "system_seconds": 0.00433
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.041133948,
+          "wall_seconds": 0.04582990400012932,
+          "peak_rss_kib": 2756,
+          "user_seconds": 0.034996,
+          "system_seconds": 0.009235
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.044249468,
+          "wall_seconds": 0.0479045780011802,
+          "peak_rss_kib": 2808,
+          "user_seconds": 0.046605,
+          "system_seconds": 0.0
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.042284869,
+          "wall_seconds": 0.04667604799942637,
+          "peak_rss_kib": 2676,
+          "user_seconds": 0.040573,
+          "system_seconds": 0.004851
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.041194618,
+          "wall_seconds": 0.04554033000022173,
+          "peak_rss_kib": 2700,
+          "user_seconds": 0.042826,
+          "system_seconds": 0.001293
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.041519457,
+          "wall_seconds": 0.04507738199936284,
+          "peak_rss_kib": 2760,
+          "user_seconds": 0.039701,
+          "system_seconds": 0.004262
+        }
+      ],
+      "summary": {
+        "parser_seconds": {
+          "mean": 0.042076472000000004,
+          "sample_stdev": 0.001298231932643586,
+          "min": 0.041133948,
+          "max": 0.044249468
+        },
+        "wall_seconds": {
+          "mean": 0.046205648400064095,
+          "sample_stdev": 0.0011140528567836474,
+          "min": 0.04507738199936284,
+          "max": 0.0479045780011802
+        },
+        "peak_rss_kib": {
+          "mean": 2740,
+          "sample_stdev": 52.38320341483518,
+          "min": 2676,
+          "max": 2808
+        }
+      }
+    },
+    {
+      "variant": "yajl",
+      "input_bytes": 5242854,
+      "status": "ok",
+      "warmups": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.025824325,
+          "wall_seconds": 0.03000063100080297,
+          "peak_rss_kib": 2668,
+          "user_seconds": 0.024324,
+          "system_seconds": 0.004382
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.024768978,
+          "wall_seconds": 0.030732313000044087,
+          "peak_rss_kib": 2660,
+          "user_seconds": 0.027236,
+          "system_seconds": 0.002323
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.025020697,
+          "wall_seconds": 0.02879873299934843,
+          "peak_rss_kib": 2576,
+          "user_seconds": 0.024873,
+          "system_seconds": 0.002519
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.023725027,
+          "wall_seconds": 0.027300577999994857,
+          "peak_rss_kib": 2540,
+          "user_seconds": 0.025996,
+          "system_seconds": 0.0
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.023904197,
+          "wall_seconds": 0.02741518099901441,
+          "peak_rss_kib": 2512,
+          "user_seconds": 0.02223,
+          "system_seconds": 0.003988
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.025889924,
+          "wall_seconds": 0.030059959999562125,
+          "peak_rss_kib": 2672,
+          "user_seconds": 0.02339,
+          "system_seconds": 0.004708
+        }
+      ],
+      "summary": {
+        "parser_seconds": {
+          "mean": 0.0246617646,
+          "sample_stdev": 0.0008803534364874724,
+          "min": 0.023725027,
+          "max": 0.025889924
+        },
+        "wall_seconds": {
+          "mean": 0.028861352999592783,
+          "sample_stdev": 0.0015385466667216833,
+          "min": 0.027300577999994857,
+          "max": 0.030732313000044087
+        },
+        "peak_rss_kib": {
+          "mean": 2592,
+          "sample_stdev": 71.386273190299,
+          "min": 2512,
+          "max": 2672
+        }
+      }
+    },
+    {
+      "variant": "jsoncons_dom",
+      "input_bytes": 33554368,
+      "status": "ok",
+      "warmups": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.394697364,
+          "wall_seconds": 0.4022609969997575,
+          "peak_rss_kib": 228140,
+          "user_seconds": 0.321515,
+          "system_seconds": 0.079382,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.398498366,
+          "wall_seconds": 0.40967574900059844,
+          "peak_rss_kib": 228160,
+          "user_seconds": 0.309652,
+          "system_seconds": 0.098612,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.502713831,
+          "wall_seconds": 0.5109430359989346,
+          "peak_rss_kib": 228184,
+          "user_seconds": 0.40598,
+          "system_seconds": 0.101394,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.50657986,
+          "wall_seconds": 0.5165568050015281,
+          "peak_rss_kib": 228228,
+          "user_seconds": 0.440298,
+          "system_seconds": 0.074468,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.488561492,
+          "wall_seconds": 0.5001273090001632,
+          "peak_rss_kib": 228216,
+          "user_seconds": 0.406979,
+          "system_seconds": 0.091559,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.49204873,
+          "wall_seconds": 0.4997036709992244,
+          "peak_rss_kib": 228184,
+          "user_seconds": 0.400727,
+          "system_seconds": 0.097148,
+          "stderr": "JSONCONS does not support max depth limit\nJSONCONS does not support max arg num limit"
+        }
+      ],
+      "summary": {
+        "parser_seconds": {
+          "mean": 0.4776804558,
+          "sample_stdev": 0.04487898459854655,
+          "min": 0.398498366,
+          "max": 0.50657986
+        },
+        "wall_seconds": {
+          "mean": 0.4874013140000898,
+          "sample_stdev": 0.04404207568102363,
+          "min": 0.40967574900059844,
+          "max": 0.5165568050015281
+        },
+        "peak_rss_kib": {
+          "mean": 228194.4,
+          "sample_stdev": 27.36421020237931,
+          "min": 228160,
+          "max": 228228
+        }
+      }
+    },
+    {
+      "variant": "jsoncons_sax",
+      "input_bytes": 33554368,
+      "status": "ok",
+      "warmups": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.312678616,
+          "wall_seconds": 0.3172133509997366,
+          "peak_rss_kib": 2680,
+          "user_seconds": 0.30775,
+          "system_seconds": 0.00789
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.268272694,
+          "wall_seconds": 0.2736984000002849,
+          "peak_rss_kib": 2688,
+          "user_seconds": 0.265453,
+          "system_seconds": 0.006499
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.289150014,
+          "wall_seconds": 0.2934957050001685,
+          "peak_rss_kib": 2680,
+          "user_seconds": 0.2805,
+          "system_seconds": 0.011343
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.282361849,
+          "wall_seconds": 0.2875684549999278,
+          "peak_rss_kib": 2628,
+          "user_seconds": 0.27292,
+          "system_seconds": 0.011781
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.312631015,
+          "wall_seconds": 0.31624293999993824,
+          "peak_rss_kib": 2768,
+          "user_seconds": 0.315019,
+          "system_seconds": 0.0
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.268829483,
+          "wall_seconds": 0.27311448300133634,
+          "peak_rss_kib": 2776,
+          "user_seconds": 0.267391,
+          "system_seconds": 0.004076
+        }
+      ],
+      "summary": {
+        "parser_seconds": {
+          "mean": 0.284249011,
+          "sample_stdev": 0.018207992136034277,
+          "min": 0.268272694,
+          "max": 0.312631015
+        },
+        "wall_seconds": {
+          "mean": 0.28882399660033115,
+          "sample_stdev": 0.017683128903411338,
+          "min": 0.27311448300133634,
+          "max": 0.31624293999993824
+        },
+        "peak_rss_kib": {
+          "mean": 2708,
+          "sample_stdev": 62.864934582006846,
+          "min": 2628,
+          "max": 2776
+        }
+      }
+    },
+    {
+      "variant": "yajl",
+      "input_bytes": 33554368,
+      "status": "ok",
+      "warmups": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.162595989,
+          "wall_seconds": 0.16703827600031218,
+          "peak_rss_kib": 2512,
+          "user_seconds": 0.162094,
+          "system_seconds": 0.003421
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "parser_seconds": 0.177104936,
+          "wall_seconds": 0.18118300400055887,
+          "peak_rss_kib": 2560,
+          "user_seconds": 0.171672,
+          "system_seconds": 0.008364
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.161486119,
+          "wall_seconds": 0.16535158700025931,
+          "peak_rss_kib": 2664,
+          "user_seconds": 0.151782,
+          "system_seconds": 0.012155
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.196355569,
+          "wall_seconds": 0.20075590200031002,
+          "peak_rss_kib": 2648,
+          "user_seconds": 0.184412,
+          "system_seconds": 0.014947
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.221555616,
+          "wall_seconds": 0.2261696210007358,
+          "peak_rss_kib": 2652,
+          "user_seconds": 0.224313,
+          "system_seconds": 0.0
+        },
+        {
+          "status": "ok",
+          "parser_seconds": 0.18815985,
+          "wall_seconds": 0.19362888499927067,
+          "peak_rss_kib": 2668,
+          "user_seconds": 0.190911,
+          "system_seconds": 0.000588
+        }
+      ],
+      "summary": {
+        "parser_seconds": {
+          "mean": 0.188932418,
+          "sample_stdev": 0.022434135480826727,
+          "min": 0.161486119,
+          "max": 0.221555616
+        },
+        "wall_seconds": {
+          "mean": 0.19341779980022694,
+          "sample_stdev": 0.022715504737969516,
+          "min": 0.16535158700025931,
+          "max": 0.2261696210007358
+        },
+        "peak_rss_kib": {
+          "mean": 2638.4,
+          "sample_stdev": 44.595963942939946,
+          "min": 2560,
+          "max": 2668
+        }
+      }
+    }
+  ],
+  "status": "ok"
+}

@@ -167,7 +167,7 @@ def main():
     parser.add_argument("--binary", type=Path, default=REPOSITORY / "src/jsonbench")
     parser.add_argument("--baseline", type=Path, help="preserved executable containing the original DOM implementation")
     parser.add_argument("--config", type=Path, default=REPOSITORY / "config.h",
-                        help="configured header used to build --binary, for YAJL's file buffer limit")
+                        help="configured header used to build --binary, recorded with the measurements")
     parser.add_argument("--samples", type=positive_int, default=5)
     parser.add_argument("--warmups", type=positive_int, default=1)
     parser.add_argument("--sizes", type=size_bytes, nargs="+", default=None)

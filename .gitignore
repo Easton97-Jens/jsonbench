@@ -56,3 +56,15 @@ m4/lt~obsolete.m4
 # can automatically generate from config.status script
 # (which is called by configure script))
 Makefile
+
+# Generated API test executables and Automake reports.
+/tests/*_api_tests
+/tests/pathhandler_tests
+/tests/*.log
+/tests/*.trs
+/tests/__pycache__/
+/build-aux/
+/config.h
+/config.h.in~
+/configure~
+/jsonbench-*.tar.gz

@@ -6,6 +6,7 @@ commands, then run:
 ```sh
 tests/run_tests.sh           # every available engine, the same required matrix
 tests/run_tests.sh JSONCONS  # one engine; still compare with YAJL if available
+make check                  # six direct API/path harnesses, optional engines respected
 ```
 
 The existing shell entry point uses `regression_tests.py`, a Python 3 standard
@@ -29,9 +30,11 @@ empty containers do not.
 A parse-only adapter that emits no arguments **fails** output tests. An adapter
 that explicitly warns that a particular limit is unsupported can skip that
 limit check; it still runs parsing, output, numeric and malformed-input tests.
-Unavailable YAJL causes a clearly labelled comparison skip. Single-engine runs
-never compare the engine with itself. Only byte equality after checking the
-expected outputs is reported as compatibility. Known differences are separately
+Unavailable YAJL causes a clearly labelled comparison skip. Cross-engine checks
+require both engines to be available. YAJL's existing
+fixture rechecks are labelled repeatability, rather than compatibility with
+itself. Only byte equality after checking the expected outputs is reported as
+compatibility. Known differences are separately
 reported as `DIFF`, not as compatibility passes. Full-engine runs expose existing
 adapter defects and return nonzero when any required assertion fails.
 
@@ -39,11 +42,11 @@ The required numeric contract preserves exact integer precision (including
 values outside signed/unsigned 64-bit ranges) and decimal/exponent precision.
 jsoncons' public lossless-number API normalizes integer `-0` to `0` and removes
 the optional exponent `+`; those two differences have explicit expected results.
-Other engines are checked against the original numerical spelling. Known YAJL
-path-restoration, embedded-NUL and root-number-at-EOF differences are measured
-separately; when YAJL itself is selected it must still satisfy the intended safe
-path/output contract and fails those affected tests. No output-wide normalization
-is applied to comparisons. The helper removes only the CLI timing record at its
+Other engines are checked against the original numerical spelling, except that
+nlohmann's native integer event also has the explicit -0-to-0 expected result.
+The YAJL follow-up fixes path restoration, embedded NUL and root numbers at EOF;
+those cases now require exact equality. No output-wide normalization is applied
+to comparisons. The helper removes only the CLI timing record at its
 defined position, preserving real blank lines and `Time` argument data.
 
 To test another built executable or reproduce baseline failures:
@@ -76,3 +79,20 @@ compiler's standard paths. Add `-fsanitize=address,undefined
 -fno-omit-frame-pointer` to this command to run the harness with sanitizers.
 The API harness returns nonzero on failure and returns 77 if configured without
 JSONCONS; that is unavailable coverage, not a passing test.
+
+`make check` builds and runs all six committed harnesses: PathHandler, jsoncons,
+YAJL, the RapidJSON/nlohmann SAX pair, the four C DOM adapters, and the
+JsonCpp/simdjson pair. They test C API zero limits and rejected setters, caller
+diagnostic ownership, reuse after errors, exact output and streaming boundaries.
+The C DOM harness also checks decimal-comma process/thread locales when one is
+installed; that subcheck reports an explicit skip otherwise. The C++ harness
+preserves the simdjson safety ceiling regression: 512 containers accepted with
+an enlarged configured limit, 513/999/2000 rejected diagnostically.
+
+These API tests target the configured source tree, independently of a
+`JSONBENCH_BINARY` override. Missing engines return 77 and Automake reports
+SKIP; enabled compilation or test failures remain failures. CLI required tests
+continue to run against every available engine and intentionally fail on
+unsupported numeric/duplicate/NUL contracts. See
+[`docs/adapter-stack.md`](../docs/adapter-stack.md) for the measured matrix and
+remaining native-library limitations.

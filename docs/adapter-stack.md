@@ -94,6 +94,137 @@ g++ -std=c++17 -Wall -Wextra -Werror $CPPFLAGS -I. \
 /tmp/sax-api-tests
 ```
 
+## 3. Native DOM and simdjson validation adapters
+
+JSON-C, Jansson, cJSON, JsonCpp and yyjson retain their native DOM APIs. They now
+read files dynamically, require complete native grammar validation, check
+Unicode/NUL/resource boundaries, enforce depth and scalar counts, retain source
+order where possible, and report unsupported native representations explicitly.
+They still allocate document-sized input and DOM memory. A narrow shared C
+preflight bounds hostile tokens/depth and checks native numeric ranges; it is
+not a substitute for native JSON grammar parsing. An iterative shared walker
+uses length-aware structural paths. Borrowed raw numeric spans are matched to
+native numeric leaves before successful output, avoiding decimal reformatting
+without bypassing native range checks. A mixed numeric/string golden fixture
+checks that numeric-looking keys and strings do not consume those spans.
+
+JSON-C's strict 0.18 reader rejects raw multibyte characters; after validating
+Unicode scalars, this adapter transcodes them to equivalent Unicode escapes
+while keeping native strict/UTF-8 flags enabled. JSON-C and Jansson share
+incompatible public symbol names: the executable links Jansson first and uses
+JSON-C linkhash traversal to avoid ambiguous iterator calls. Their C APIs
+cannot retain all required duplicate/NUL-key information, so these cases are
+rejected instead of silently producing incorrect arguments. cJSON likewise
+rejects decoded NUL and integers outside its lossless double range. JsonCpp
+rejects duplicates, uses source offsets for order/raw numbers, and has a native
+1023-container ceiling.
+
+simdjson uses public OnDemand traversal, with native numeric validation and raw
+numeric output; it does not build a DOM. It does retain padded whole-document
+input and a structural index, so it is not a bounded-input SAX stream. Its
+recursive adapter has an independent 512-container safety ceiling, including
+when the caller increases the configured depth. The default limit of 500 is
+unchanged. Committed API tests exercise 500/512 and rejection at 513/999/2000
+under an 8 MiB stack and sanitizers; JsonCpp at 999 is also exercised.
+
+JSON-C, Jansson and cJSON isolate native decimal parsing in a temporary POSIX
+thread numeric locale and restore the caller locale on success and every error
+path. Other locale categories remain intact. If POSIX locale functions are
+unavailable, an existing dot-decimal locale still works; a comma-decimal locale
+is explicitly unsupported rather than changed globally. Tests cover process
+and thread decimal-comma locales, malformed native grammar, preflight failures,
+missing files, silence and exact decimal output.
+
+The iteration fixture now uses distinct keys, isolating reset/output behavior.
+Duplicate keys remain a separate required golden test for every engine.
+
+## Integrated verification
+
+The standard `./autogen.sh`, `./configure`, `make` build passed with ten engines.
+Installed native versions: JSON-C 0.18, Jansson 2.14, cJSON 1.7.18, JsonCpp 1.9.6,
+simdjson 3.12.3 and yyjson 0.10.0 (alongside YAJL 2.1, RapidJSON 1.1,
+nlohmann 3.11 and jsoncons 1.3.2).
+Glaze is unavailable in this environment and was not tested; optional dependency
+handling remains intact. The complete CLI run returned **1**, correctly keeping
+all native representation limitations visible:
+
+| Engine | Passed | Failed | Remaining required failures |
+| --- | ---: | ---: | --- |
+| YAJL | 235 | 0 | None |
+| RapidJSON | 231 | 4 | Extreme positive floating exponents |
+| nlohmann | 231 | 4 | Extreme positive floating exponents |
+| JSON-C | 225 | 10 | Duplicate keys, NUL keys, native numeric ranges |
+| Jansson | 225 | 10 | Duplicate keys, NUL keys, native numeric ranges |
+| cJSON | 227 | 8 | Decoded NUL, native numeric ranges |
+| JsonCpp | 233 | 2 | Duplicate keys |
+| jsoncons | 235 | 0 | None |
+| simdjson | 229 | 6 | Native integer/floating ranges |
+| yyjson | 235 | 0 | None |
+
+Each failing valid case is tested in output and silent mode. Unsupported ranges
+produce diagnostics, with no silent integer rounding. Assertions are unchanged
+for the required contract. There were **2339 passes, 44 failures, 0 skips**, plus
+**2 separately checked numeric spelling differences**. This includes 33 exact
+jsoncons/YAJL comparisons. `tests/run_tests.sh JSONCONS` returned 0 with **268
+passes, 0 failures, 0 skips, 2 differences**; the YAJL run returned 0 with **235
+passes**. No crash or timeout was reported.
+
+`make check` runs the six direct API/path harnesses. They contain 181 PathHandler,
+220 jsoncons, 3900 YAJL, 582 SAX-pair, 565 C DOM and 331 C++-pair checks. These
+harnesses also passed ASan/UBSan with leak detection. An all-engines-disabled
+configuration builds successfully and reports PathHandler PASS and five API
+SKIPs, with no failures. Source distribution checks include the harnesses,
+fixtures and helpers. The CLI runner remains independent and supports selecting
+one engine or another executable.
+
+The integrated ASan/UBSan build also passed all six API harnesses and reproduced
+the exact CLI counts above. A separate sanitizer log pass checks expected
+rejections for hidden reports, as a native rejection and a sanitizer can both
+exit nonzero. The sanitizer run used O1, frame pointers, non-PIE executables,
+leak detection, and all ten available engines.
+
+## Measured jsoncons/YAJL comparison
+
+The benchmark helper now attempts every requested YAJL input size. With five
+fresh-process samples after one warmup per variant, the current binary and the
+preserved original DOM executable produced:
+
+| Input | Original jsoncons DOM (ms / KiB RSS) | jsoncons SAX (ms / KiB RSS) | YAJL streaming (ms / KiB RSS) |
+| --- | --- | --- | --- |
+| 409564 bytes | 5.099 ± 0.679 / 5344 | 3.294 ± 0.763 / 2766 | 2.061 ± 0.305 / 2642 |
+| 5242854 bytes | 66.768 ± 2.053 / 39029 | 42.076 ± 1.298 / 2740 | 24.662 ± 0.880 / 2592 |
+| 33554368 bytes | 477.680 ± 44.879 / 228194 | 284.249 ± 18.208 / 2708 | 188.932 ± 22.434 / 2638 |
+
+Times are mean parser time ± sample standard deviation; RSS is mean peak child
+RSS. Linux/GCC 14.2 with effective O2; short ASCII strings, integers and booleans
+in a root array, silent mode and exact generated argument limit. Binary/config
+hashes were checked for changes during measurement. The original DOM adapter
+only parses/discards a DOM; SAX also builds paths and enforces limits. These
+cached synthetic workloads do not establish ModSecurity throughput. The raw
+report is committed as [adapter-stack-benchmark.json](adapter-stack-benchmark.json),
+including raw samples, input/binary/config hashes and environment metadata.
+Reproduce with:
+
+```sh
+python3 tests/benchmark_jsoncons.py --baseline /path/to/original/jsonbench \
+  --samples 5 --sizes 400KiB 5MiB 32MiB --output /tmp/benchmark.json
+```
+
+For ModSecurity, prioritize the jsoncons SAX adapter for bounded-input,
+lossless-number evaluation, then test request-body chunk boundaries, transaction
+argument insertion, partial-output rollback after errors, and request-wide
+resource limits in an independently licensed integration. YAJL now provides a
+safer compatibility reference. RapidJSON/nlohmann remain SAX alternatives with
+native exponent limits; simdjson is an OnDemand alternative with whole-input
+memory. None of these changes implements JSON Schema evaluation.
+
+Partial SAX arguments can be emitted before a later parse error; an embedding
+must discard them for a failed document. DOM adapters require whole-document
+memory, so request-wide input limits remain necessary. The multi-library link
+order and POSIX locale fallback were checked on Linux; other platforms and
+library upgrades need their own build/ABI validation. No separate ModSecurity
+integration or fuzzing campaign has been performed here.
+
 ## Optional JSON Schema validation
 
 No schema validator dependency is introduced. Schema rules are a separate

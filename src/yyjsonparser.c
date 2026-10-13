@@ -1,118 +1,104 @@
 #include "yyjsonparser.h"
-
 #if HAVE_YYJSON
-
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "domarguments.h"
 #include <yyjson.h>
 
-struct yyjson_parser {
-    int silence;
-};
+struct yyjson_parser { dom_settings settings; };
 
-static int read_whole_file(const char *filename, char **content, size_t *length, char **error_msg) {
-    FILE *fp = fopen(filename, "rb");
-    if (fp == NULL) {
-        *error_msg = strdup("Unable to open JSON file");
-        return 1;
+static int yyjson_kind(const void *node) {
+    return yyjson_is_obj((yyjson_val *)node) ? DOM_OBJECT : yyjson_is_arr((yyjson_val *)node) ? DOM_ARRAY : DOM_SCALAR;
+}
+
+static int yyjson_child(const void *node, dom_cursor *cursor, int first,
+                         const void **child, const char **key, size_t *key_length) {
+    yyjson_val *json = (yyjson_val *)node;
+    if (yyjson_is_arr(json)) {
+        yyjson_arr_iter iter;
+        if (first) iter = yyjson_arr_iter_with(json);
+        else memcpy(&iter, cursor, sizeof(iter));
+        *child = yyjson_arr_iter_next(&iter);
+        if (*child == NULL) return 0;
+        memcpy(cursor, &iter, sizeof(iter));
+    } else {
+        yyjson_obj_iter iter;
+        yyjson_val *native_key;
+        if (first) iter = yyjson_obj_iter_with(json);
+        else memcpy(&iter, cursor, sizeof(iter));
+        native_key = yyjson_obj_iter_next(&iter);
+        if (native_key == NULL) return 0;
+        *child = yyjson_obj_iter_get_val(native_key);
+        *key = yyjson_get_str(native_key); *key_length = yyjson_get_len(native_key);
+        memcpy(cursor, &iter, sizeof(iter));
     }
+    return 1;
+}
 
-    if (fseek(fp, 0, SEEK_END) != 0) {
-        fclose(fp);
-        *error_msg = strdup("Unable to seek JSON file");
-        return 1;
-    }
-
-    long len = ftell(fp);
-    if (len < 0) {
-        fclose(fp);
-        *error_msg = strdup("Unable to measure JSON file");
-        return 1;
-    }
-    rewind(fp);
-
-    char *buffer = (char *)malloc((size_t)len + 1U);
-    if (buffer == NULL) {
-        fclose(fp);
-        *error_msg = strdup("Unable to allocate JSON buffer");
-        return 1;
-    }
-
-    size_t read_len = fread(buffer, 1, (size_t)len, fp);
-    fclose(fp);
-    if (read_len != (size_t)len) {
-        free(buffer);
-        *error_msg = strdup("Unable to read entire JSON file");
-        return 1;
-    }
-
-    buffer[len] = '\0';
-    *content = buffer;
-    *length = (size_t)len;
+static int yyjson_scalar(const void *node, dom_value *value, char **error) {
+    yyjson_val *json = (yyjson_val *)node;
+    if (yyjson_is_null(json)) { value->data = ""; value->length = 0; }
+    else if (yyjson_is_bool(json)) {
+        value->data = yyjson_get_bool(json) ? "true" : "false"; value->length = strlen(value->data);
+    } else if (yyjson_is_str(json)) {
+        value->data = yyjson_get_str(json); value->length = yyjson_get_len(json);
+    } else if (yyjson_is_raw(json)) {
+        value->data = yyjson_get_raw(json); value->length = yyjson_get_len(json);
+    } else return dom_error(error, "Unexpected non-lossless yyjson scalar type");
     return 0;
+}
+
+static const dom_adapter yyjson_adapter = {yyjson_kind, yyjson_child, yyjson_scalar};
+
+int yyjson_parse_file(yyjson_parser *parser, const char *filename, char **error_msg) {
+    char *content = NULL;
+    size_t length = 0, keys = 0;
+    yyjson_read_err native_error;
+    yyjson_doc *doc = NULL;
+    int rc;
+    if (error_msg == NULL) return -1;
+    *error_msg = NULL;
+    if (parser == NULL || filename == NULL) return dom_error(error_msg, "Invalid yyjson parser arguments");
+    rc = dom_read_file(filename, &content, &length, error_msg);
+    if (rc != 0) return rc;
+    rc = dom_preflight(content, length, &parser->settings, DOM_NUL_ALLOWED,
+                        DOM_NUM_RAW, &keys, error_msg);
+    if (rc != 0) goto done;
+    /* Public native option preserves arbitrary JSON number lexemes and the
+     * native object iterator retains repeated keys in original order. */
+    doc = yyjson_read_opts(content, length, YYJSON_READ_NUMBER_AS_RAW, NULL, &native_error);
+    if (doc == NULL) {
+        char message[256];
+        snprintf(message, sizeof(message), "yyjson parse error at byte %zu: %s", native_error.pos,
+                 native_error.msg != NULL ? native_error.msg : "unknown error");
+        rc = dom_error(error_msg, message); goto done;
+    }
+    rc = dom_walk(yyjson_doc_get_root(doc), &yyjson_adapter, &parser->settings, &keys, error_msg);
+ done:
+    yyjson_doc_free(doc);
+    free(content);
+    return rc;
 }
 
 int yyjson_json_init(yyjson_parser **parser, char **error_msg) {
-    assert(parser != NULL);
-    assert(error_msg != NULL);
-
-    *parser = (yyjson_parser *)calloc(1, sizeof(yyjson_parser));
-    if (*parser == NULL) {
-        *error_msg = strdup("Unable to allocate yyjson parser");
-        return 1;
-    }
-
+    if (error_msg == NULL) return -1;
     *error_msg = NULL;
+    if (parser == NULL) return dom_error(error_msg, "Invalid yyjson parser output pointer");
+    *parser = (yyjson_parser *)calloc(1, sizeof(**parser));
+    if (*parser == NULL) return dom_error(error_msg, "Unable to allocate yyjson parser");
+    dom_settings_init(&(*parser)->settings);
     return 0;
 }
 
-int yyjson_parse_file(yyjson_parser *parser, const char *filename, char **error_msg) {
-    (void)parser;
-    if (filename == NULL || error_msg == NULL) {
-        return -1;
-    }
-
-    char *content = NULL;
-    size_t length = 0;
-    int rc = read_whole_file(filename, &content, &length, error_msg);
-    if (rc != 0) {
-        return 2;
-    }
-
-    yyjson_doc *doc = yyjson_read(content, length, 0);
-    free(content);
-
-    if (doc == NULL) {
-        *error_msg = strdup("yyjson_read failed");
-        return 2;
-    }
-
-    yyjson_doc_free(doc);
-    return 0;
+int yyjson_set_max_depth(yyjson_parser *parser, double value) {
+    return parser == NULL ? -1 : dom_set_limit(value, &parser->settings.max_depth);
 }
 
-int yyjson_set_max_depth(yyjson_parser *parser, double max_depth) {
-    if (parser == NULL) {
-        return -1;
-    }
-    (void)max_depth;
-    return 1;
-}
-
-int yyjson_set_max_arg_num(yyjson_parser *parser, double max_arg_num) {
-    if (parser == NULL) {
-        return -1;
-    }
-    (void)max_arg_num;
-    return 1;
+int yyjson_set_max_arg_num(yyjson_parser *parser, double value) {
+    return parser == NULL ? -1 : dom_set_limit(value, &parser->settings.max_args);
 }
 
 int yyjson_set_silence(yyjson_parser *parser, int silence) {
-    if (parser != NULL) {
-        parser->silence = silence;
-    }
+    if (parser == NULL) return -1;
+    parser->settings.silence = silence != 0;
     return 0;
 }
 

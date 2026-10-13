@@ -6,8 +6,29 @@
 #if HAVE_YAJL
 
 typedef struct yajl_json_data yajl_json_data;
+typedef struct yajl_path_frame yajl_path_frame;
 
 #include <yajl/yajl_parse.h>
+
+/* Internal structural path boundaries and incremental lexical guards. Keep
+ * this state inline so parser creation and cleanup need no extra allocation.
+ */
+typedef struct yajl_parser_state {
+    yajl_path_frame *frames;
+    size_t frame_count;
+    size_t frame_capacity;
+    const char *callback_error;
+    unsigned int escape_state;
+    unsigned int escape_digits;
+    unsigned int escape_codepoint;
+    int low_surrogate_required;
+    size_t token_length;
+    int number_token;
+    int completed;
+    unsigned int utf8_remaining;
+    unsigned int utf8_min;
+    unsigned int utf8_max;
+} yajl_parser_state;
 
 struct yajl_json_data {
     /* yajl configuration and parser state */
@@ -27,6 +48,7 @@ struct yajl_json_data {
     long int       arg_num_limit;            // cppcheck-suppress unusedStructMember
     int            arg_num_limit_exceeded;   // cppcheck-suppress unusedStructMember
     int            silence;                  // cppcheck-suppress unusedStructMember
+    yajl_parser_state state;
 };
 
 #ifdef __cplusplus

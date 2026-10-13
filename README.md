@@ -179,6 +179,35 @@ tests/run_tests.sh           # all available engines
 tests/run_tests.sh SIMDJSON  # single engine
 ```
 
+The runner requires Python 3 (standard library only). Every selected engine
+runs the same regression matrix: explicit argument output, valid/invalid JSON,
+UTF-8, numeric ranges, size/limit boundaries, silent mode and repeated passes.
+Failures and unsupported-limit skips are reported separately; missing expected
+output is a failure. A JSONCONS-only run also compares applicable cases to YAJL
+when it is installed. Other engines' known defects remain visible as failures.
+
+The jsoncons adapter uses streaming SAX events, strict JSON syntax and lossless
+number events. See [the implementation and compatibility notes](docs/jsoncons-sax.md)
+and [validation results](docs/validation-results.md).
+
+To exercise the jsoncons C interface separately after configuring the project
+(use the same include flags as your normal build):
+
+```bash
+gcc -std=gnu11 -c tests/test_c_memory.c -o /tmp/jsonbench-test-c-memory.o
+g++ -std=c++17 ${CPPFLAGS:-} tests/jsoncons_api_tests.cpp src/jsonconsparser.cpp \
+  /tmp/jsonbench-test-c-memory.o -o /tmp/jsoncons_api_tests
+/tmp/jsoncons_api_tests
+```
+
+For memory-safety validation, add `-fsanitize=address,undefined
+-fno-omit-frame-pointer` to both compilation commands. For repeatable DOM/SAX/YAJL
+measurements, preserve a pre-change executable and run:
+
+```bash
+python3 tests/benchmark_jsoncons.py --baseline /path/to/jsonbench-before --binary src/jsonbench
+```
+
 ---
 
 ## TODO

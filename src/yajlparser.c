@@ -2,426 +2,380 @@
 
 #if HAVE_YAJL
 
-#include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
-const char *base_offset=NULL;
-
-static int json_add_argument(yajl_json_data *p, const unsigned char *value, unsigned length)
-{
-    assert(p != NULL);
-
-    p->current_arg_num++;
-    if (p->current_arg_num > p->arg_num_limit) {
-        p->arg_num_limit_exceeded = 1;
-        return 0;
-    }
-
-    if (p->silence) {
-        return 1;
-    }
-
-    char argname[JSON_STRING_SIZE];
-    char argval[JSON_STRING_SIZE];
-
-    /**
-     * Argument name is 'prefix + current_key'
-     */
-    if (p->prefix_len > 0) {
-        if (p->prefix_len + 1 + p->current_key_len >= JSON_STRING_SIZE) {
-            printf("Argument name too long\n");
-            return 0;
-        }
-        memcpy(argname, p->prefix, p->prefix_len);
-        memcpy(argname + p->prefix_len, ".", 1);
-        memcpy(argname + p->prefix_len + 1, p->current_key, p->current_key_len);
-        argname[p->prefix_len + 1 + p->current_key_len] = '\0';
-    }
-    else {
-        if (p->current_key_len >= JSON_STRING_SIZE) {
-            printf("Argument name too long\n");
-            return 0;
-        }
-        memcpy(argname, p->current_key, p->current_key_len);
-        argname[p->current_key_len] = '\0';
-    }
-    if (length >= JSON_STRING_SIZE) {
-        printf("Argument value too long\n");
-        return 0;
-    }
-    memcpy(argval, value, length);
-    argval[length] = '\0';
-    printf("%s: %s\n", argname, argval);
-
-    return 1;
-}
-
-/**
- * yajl callback functions
- * For more information on the function signatures and order, check
- * http://lloyd.github.com/yajl/yajl-1.0.12/structyajl__callbacks.html
- */
-
-/**
- * Callback for hash key values; we use those to define the variable names
- * under ARGS. Whenever we reach a new key, we update the current key value.
- */
-static int yajl_map_key(void *ctx, const unsigned char *key, size_t length)
-{
-    yajl_json_data *p = (yajl_json_data *) ctx;
-    assert(p != NULL);
-    unsigned char *safe_key = (unsigned char *) NULL;
-
-    /**
-     * yajl does not provide us with null-terminated strings, but
-     * rather expects us to copy the data from the key up to the
-     * length informed; we create a standalone null-termined copy
-     * in safe_key
-     */
-    safe_key = (unsigned char *)strndup((char *)key, length);
-
-    (unsigned char*)strcpy((char *)p->current_key, (char *)safe_key);
-    p->current_key[length] = '\0';
-    p->current_key_len = length;
-    free(safe_key);
-    return 1;
-}
-
-static int yajl_null(void *ctx)
-{
-    yajl_json_data *p = (yajl_json_data *) ctx;
-    assert(p != NULL);
-
-    return json_add_argument(p, (unsigned char*)"", 0);
-}
-
-static int yajl_boolean(void *ctx, int value)
-{
-    yajl_json_data *p = (yajl_json_data *) ctx;
-    assert(p != NULL);
-
-    if (value) {
-        return json_add_argument(p,  (unsigned char*)"true", strlen("true"));
-    }
-    else {
-        return json_add_argument(p,  (unsigned char*)"false", strlen("false"));
-    }
-}
-
-static int yajl_string(void *ctx, const unsigned char *value, size_t length)
-{
-    yajl_json_data *p = (yajl_json_data *) ctx;
-    assert(p != NULL);
-
-    return json_add_argument(p, value, length);
-}
-
-static int yajl_number(void *ctx, const char *value, size_t length)
-{
-    yajl_json_data *p = (yajl_json_data *) ctx;
-    assert(p != NULL);
-
-    return json_add_argument(p, (unsigned char*)value, length);
-}
-
-static int yajl_start_array(void *ctx) {
-    yajl_json_data *p = (yajl_json_data *) ctx;
-    assert(p != NULL);
-
-    if (p->prefix_len == 0 && p->current_key_len == 0) {
-        memcpy(p->prefix, "array", 5);
-        p->prefix_len = 5;
-        p->prefix[p->prefix_len] = '\0';
-        memcpy(p->current_key, "array", 5);
-        p->current_key_len = 5;
-        p->current_key[p->current_key_len] = '\0';
-    }
-    else if (p->prefix_len > 0) {
-        memcpy(p->prefix + p->prefix_len, ".", 1);
-        p->prefix_len++;
-        memcpy(p->prefix + p->prefix_len, p->current_key, p->current_key_len);
-        p->prefix_len += p->current_key_len;
-        p->prefix[p->prefix_len] = '\0';
-    }
-    else {
-        memcpy(p->prefix, p->current_key, p->current_key_len);
-        p->prefix_len += p->current_key_len;
-        p->prefix[p->prefix_len] = '\0';
-    }
-
-    p->current_depth++;
-    if (p->current_depth > p->depth_limit) {
-        p->depth_limit_exceeded = 1;
-        return 0;
-    }
-
-    return 1;
-}
-
-
-static int yajl_end_array(void *ctx) {
-    yajl_json_data *p = (yajl_json_data *) ctx;
-    assert(p != NULL);
-
-    size_t separator = p->prefix_len;
-
-    for(int i = p->prefix_len - 1; i >= 0; i--) {
-        if (p->prefix[i] == '.') {
-            separator = i;
-            break;
-        }
-    }
-
-    if (separator < p->prefix_len) {
-        p->prefix[separator] = '\0';
-        p->prefix_len = separator;
-    }
-    else {
-        p->prefix[0] = '\0';
-        p->prefix_len = 0;
-    }
-    p->current_depth--;
-
-    return 1;
-}
-
-/**
- * Callback for a new hash, which indicates a new subtree, labeled as the current
- * argument name, is being created
- */
-static int yajl_start_map(void *ctx)
-{
-    yajl_json_data *p = (yajl_json_data *) ctx;
-    assert(p != NULL);
-
-    if (p->prefix_len == 0) {
-        memcpy(p->prefix, p->current_key, p->current_key_len);
-        p->prefix_len = p->current_key_len;
-        p->prefix[p->prefix_len] = '\0';
-    }
-    else {
-        memcpy(p->prefix + p->prefix_len, ".", 1);
-        p->prefix_len++;
-        memcpy(p->prefix + p->prefix_len, p->current_key, p->current_key_len);
-        p->prefix_len += p->current_key_len;
-        p->prefix[p->prefix_len] = '\0';
-    }
-    p->current_depth++;
-    if (p->current_depth > p->depth_limit) {
-        p->depth_limit_exceeded = 1;
-        return 0;
-    }
-
-    return 1;
-}
-
-/**
- * Callback for end hash, meaning the current subtree is being closed, and that
- * we should go back to the parent variable label
- */
-static int yajl_end_map(void *ctx)
-{
-    yajl_json_data *p = (yajl_json_data *) ctx;
-    assert(p != NULL);
-    size_t separator = p->prefix_len;
-
-    for(int i = p->prefix_len - 1; i >= 0; i--) {
-        if (p->prefix[i] == '.') {
-            separator = i;
-            break;
-        }
-    }
-
-    if (separator < p->prefix_len) {
-        memcpy(p->current_key, p->prefix + separator + 1, p->prefix_len - separator - 1);
-        p->current_key_len = p->prefix_len - separator - 1;
-        p->prefix[separator] = '\0';
-        p->prefix_len = separator;
-    }
-    else {
-        memcpy(p->current_key, p->prefix, p->prefix_len);
-        p->current_key_len = p->prefix_len;
-        p->prefix[0] = '\0';
-        p->prefix_len = 0;
-    }
-    p->current_depth--;
-
-    return 1;
-}
-
-static yajl_callbacks callbacks = {
-    yajl_null,
-    yajl_boolean,
-    NULL /* yajl_integer  */,
-    NULL /* yajl_double */,
-    yajl_number,
-    yajl_string,
-    yajl_start_map,
-    yajl_map_key,
-    yajl_end_map,
-    yajl_start_array,
-    yajl_end_array
+struct yajl_path_frame {
+    size_t prefix_length;
+    size_t key_length;
+    unsigned char *key;
 };
 
-/**
- * Initialise JSON parser.
- */
+static int reject(yajl_json_data *p, const char *message) {
+    p->state.callback_error = message;
+    return 0;
+}
+
+static int json_add_argument(yajl_json_data *p, const unsigned char *value, size_t length) {
+    if (p->current_arg_num >= p->arg_num_limit) {
+        p->arg_num_limit_exceeded = 1;
+        return reject(p, "Argument number limit exceeded");
+    }
+    size_t name_length = p->prefix_len + (p->prefix_len ? 1 : 0) + p->current_key_len;
+    if (name_length >= JSON_STRING_SIZE) return reject(p, "Argument name too long");
+    if (length >= JSON_STRING_SIZE) return reject(p, "Argument value too long");
+    ++p->current_arg_num;
+    if (p->silence) return 1;
+    int ok = 1;
+    if (p->prefix_len) {
+        ok = fwrite(p->prefix, 1, p->prefix_len, stdout) == p->prefix_len;
+        ok = (fputc('.', stdout) != EOF) && ok;
+    }
+    ok = (fwrite(p->current_key, 1, p->current_key_len, stdout) == p->current_key_len) && ok;
+    ok = (fwrite(": ", 1, 2, stdout) == 2) && ok;
+    ok = (fwrite(value, 1, length, stdout) == length) && ok;
+    ok = (fputc('\n', stdout) != EOF) && ok;
+    return ok ? 1 : reject(p, "Unable to write JSON argument output");
+}
+
+static int map_key(void *ctx, const unsigned char *key, size_t length) {
+    yajl_json_data *p = ctx;
+    if (length >= JSON_STRING_SIZE) return reject(p, "Argument name too long");
+    memcpy(p->current_key, key, length);
+    p->current_key[length] = '\0';
+    p->current_key_len = length;
+    return 1;
+}
+static int null_value(void *ctx) { return json_add_argument(ctx, (const unsigned char *)"", 0); }
+static int boolean_value(void *ctx, int value) {
+    return json_add_argument(ctx, (const unsigned char *)(value ? "true" : "false"), value ? 4 : 5);
+}
+static int string_value(void *ctx, const unsigned char *value, size_t length) {
+    return json_add_argument(ctx, value, length);
+}
+static int number_value(void *ctx, const char *value, size_t length) {
+    return json_add_argument(ctx, (const unsigned char *)value, length);
+}
+
+static int start_container(yajl_json_data *p, int array) {
+    if (p->current_depth >= p->depth_limit) {
+        p->depth_limit_exceeded = 1;
+        return reject(p, "JSON depth limit exceeded");
+    }
+    int root_array = array && p->state.frame_count == 0;
+    size_t length = 5;
+    if (!root_array)
+        length = p->prefix_len + (p->prefix_len ? 1 : 0) + p->current_key_len;
+    if (length >= JSON_STRING_SIZE) return reject(p, "Argument name too long");
+    if (p->state.frame_count == p->state.frame_capacity) {
+        if (p->state.frame_capacity > SIZE_MAX / (2 * sizeof(yajl_path_frame)))
+            return reject(p, "JSON path allocation limit exceeded");
+        size_t capacity = p->state.frame_capacity ? p->state.frame_capacity * 2 : 16;
+        yajl_path_frame *frames = realloc(p->state.frames, capacity * sizeof(*frames));
+        if (!frames) return reject(p, "Unable to allocate JSON path stack");
+        p->state.frames = frames;
+        p->state.frame_capacity = capacity;
+    }
+    unsigned char *saved = malloc(p->current_key_len + 1);
+    if (!saved) return reject(p, "Unable to allocate JSON path key");
+    memcpy(saved, p->current_key, p->current_key_len);
+    saved[p->current_key_len] = '\0';
+    p->state.frames[p->state.frame_count++] = (yajl_path_frame){p->prefix_len, p->current_key_len, saved};
+    if (root_array) {
+        memcpy(p->prefix, "array", 5);
+        memcpy(p->current_key, "array", 5);
+        p->prefix_len = 5;
+        p->current_key_len = 5;
+    } else {
+        if (p->prefix_len) p->prefix[p->prefix_len++] = '.';
+        memcpy(p->prefix + p->prefix_len, p->current_key, p->current_key_len);
+        p->prefix_len += p->current_key_len;
+    }
+    p->prefix[p->prefix_len] = '\0';
+    p->current_key[p->current_key_len] = '\0';
+    ++p->current_depth;
+    return 1;
+}
+static int start_object(void *ctx) { return start_container(ctx, 0); }
+static int start_array(void *ctx) { return start_container(ctx, 1); }
+static int end_container(void *ctx) {
+    yajl_json_data *p = ctx;
+    if (!p->state.frame_count) return reject(p, "Unpaired JSON container event");
+    yajl_path_frame *frame = &p->state.frames[--p->state.frame_count];
+    p->prefix_len = frame->prefix_length;
+    p->prefix[p->prefix_len] = '\0';
+    p->current_key_len = frame->key_length;
+    memcpy(p->current_key, frame->key, frame->key_length + 1);
+    free(frame->key);
+    --p->current_depth;
+    return 1;
+}
+static const yajl_callbacks callbacks = {
+    null_value, boolean_value, NULL, NULL, number_value, string_value,
+    start_object, map_key, end_container, start_array, end_container
+};
+
+static void clear_state(yajl_json_data *p) {
+    for (size_t i = 0; i < p->state.frame_count; ++i) free(p->state.frames[i].key);
+    p->state.frame_count = 0;
+    p->prefix_len = 0;
+    p->current_key_len = 0;
+    p->prefix[0] = '\0';
+    p->current_key[0] = '\0';
+    p->current_depth = 0;
+    p->current_arg_num = 0;
+    p->depth_limit_exceeded = 0;
+    p->arg_num_limit_exceeded = 0;
+    p->state.callback_error = NULL;
+    p->state.escape_state = 0;
+    p->state.escape_digits = 0;
+    p->state.escape_codepoint = 0;
+    p->state.low_surrogate_required = 0;
+    p->state.number_token = 0;
+    p->state.completed = 0;
+    p->state.token_length = 0;
+    p->state.utf8_remaining = 0;
+    p->state.utf8_min = 0x80;
+    p->state.utf8_max = 0xbf;
+    p->status = yajl_status_ok;
+}
+static int reset(yajl_json_data *p, char **error_msg) {
+    if (p->handle) yajl_free(p->handle);
+    clear_state(p);
+    p->handle = yajl_alloc(&callbacks, NULL, p);
+    if (!p->handle) {
+        *error_msg = strdup("Unable to allocate YAJL parser");
+        return -1;
+    }
+    yajl_config(p->handle, yajl_allow_partial_values, 0);
+    yajl_config(p->handle, yajl_dont_validate_strings, 0);
+    return 1;
+}
 int yajl_json_init(yajl_json_data **json, char **error_msg) {
-    assert(error_msg != NULL);
-
+    if (!error_msg) return -1;
     *error_msg = NULL;
-
-    (*json) = malloc(sizeof(yajl_json_data));
-    if (*json == NULL) return -1;
-
-    /**
-     * Prefix and current key are initially empty
-     */
-    (*json)->prefix = (unsigned char *) malloc(JSON_STRING_SIZE * sizeof(unsigned char));
-    if ((*json)->prefix == NULL) return -1;
-    memset((*json)->prefix, 0, JSON_STRING_SIZE);
-    (*json)->prefix_len = 0;
-    (*json)->current_key = (unsigned char *) malloc(JSON_STRING_SIZE * sizeof(unsigned char));
-    if ((*json)->current_key == NULL) return -1;
-    memset((*json)->current_key, 0, JSON_STRING_SIZE);
-    (*json)->current_key_len = 0;
-
-    (*json)->current_depth          = 0;
-    (*json)->depth_limit            = 0;
-    (*json)->depth_limit_exceeded   = 0;
-    (*json)->current_arg_num        = 0;
-    (*json)->arg_num_limit          = 0;
-    (*json)->arg_num_limit_exceeded = 0;
-    (*json)->silence                = 0;
-
-    /**
-     * yajl initialization
-     *
-     * yajl_parser_config definition:
-     * http://lloyd.github.io/yajl/yajl-2.0.1/yajl__parse_8h.html#aec816c5518264d2ac41c05469a0f986c
-     *
-     * TODO: make UTF8 validation optional, as it depends on Content-Encoding
-     */
-
-    (*json)->handle = yajl_alloc(&callbacks, NULL, (*json));
-    yajl_config((*json)->handle, yajl_allow_partial_values, 0);
-
+    if (!json) return -1;
+    *json = NULL;
+    yajl_json_data *p = calloc(1, sizeof(*p));
+    if (!p) { *error_msg = strdup("Unable to allocate YAJL parser"); return -1; }
+    p->prefix = malloc(JSON_STRING_SIZE);
+    p->current_key = malloc(JSON_STRING_SIZE);
+    p->depth_limit = 500;
+    p->arg_num_limit = 500;
+    if (!p->prefix || !p->current_key || reset(p, error_msg) < 0) {
+        if (!*error_msg) *error_msg = strdup("Unable to allocate YAJL path buffers");
+        yajl_json_cleanup(p);
+        return -1;
+    }
+    *json = p;
     return 1;
 }
 
-/**
- * Feed one chunk of data to the JSON parser.
- */
-int yajl_json_process_chunk(yajl_json_data *json, const char *buf, unsigned int size, char **error_msg) {
-    assert(json != NULL);
-    assert(error_msg != NULL);
+// Narrow incremental token/Unicode guard. YAJL 2.1 does not validate that an
+// escaped surrogate pair's second unit is a low surrogate. It also grows lexer
+// buffers before callbacks can reject oversized values. JSON grammar stays YAJL's.
+static int check_utf8_byte(yajl_json_data *p, unsigned char c) {
+    // YAJL 2.1's native check accepts overlong encodings and surrogate
+    // codepoints; enforce Unicode scalar UTF-8 independently across chunks.
+    if (p->state.utf8_remaining) {
+        if (c < p->state.utf8_min || c > p->state.utf8_max)
+            return reject(p, "Invalid UTF-8 sequence");
+        --p->state.utf8_remaining;
+        p->state.utf8_min = 0x80;
+        p->state.utf8_max = 0xbf;
+        return 1;
+    }
+    if (c < 0x80) return 1;
+    p->state.utf8_min = 0x80;
+    p->state.utf8_max = 0xbf;
+    if (c >= 0xc2 && c <= 0xdf) {
+        p->state.utf8_remaining = 1;
+        return 1;
+    }
+    if (c >= 0xe0 && c <= 0xef) {
+        p->state.utf8_remaining = 2;
+        if (c == 0xe0) p->state.utf8_min = 0xa0;
+        if (c == 0xed) p->state.utf8_max = 0x9f;
+        return 1;
+    }
+    if (c >= 0xf0 && c <= 0xf4) {
+        p->state.utf8_remaining = 3;
+        if (c == 0xf0) p->state.utf8_min = 0x90;
+        if (c == 0xf4) p->state.utf8_max = 0x8f;
+        return 1;
+    }
+    return reject(p, "Invalid UTF-8 sequence");
+}
+
+static void start_unicode_escape(yajl_json_data *p) {
+    p->state.escape_state = 3;
+    p->state.escape_digits = 0;
+    p->state.escape_codepoint = 0;
+}
+
+static int finish_unicode_escape(yajl_json_data *p) {
+    if (p->state.low_surrogate_required) {
+        if (p->state.escape_codepoint < 0xdc00 || p->state.escape_codepoint > 0xdfff)
+            return reject(p, "Invalid Unicode surrogate escape");
+        p->state.low_surrogate_required = 0;
+        p->state.escape_state = 1;
+        return 1;
+    }
+    if (p->state.escape_codepoint >= 0xd800 && p->state.escape_codepoint <= 0xdbff) {
+        p->state.low_surrogate_required = 1;
+        p->state.escape_state = 4;
+        return 1;
+    }
+    if (p->state.escape_codepoint >= 0xdc00 && p->state.escape_codepoint <= 0xdfff)
+        return reject(p, "Invalid Unicode surrogate escape");
+    p->state.escape_state = 1;
+    return 1;
+}
+
+static int check_unicode_digit(yajl_json_data *p, unsigned char c) {
+    unsigned int digit;
+    if (c >= '0' && c <= '9') digit = c - '0';
+    else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
+    else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
+    else return reject(p, "Invalid Unicode escape");
+    p->state.escape_codepoint = p->state.escape_codepoint * 16 + digit;
+    ++p->state.escape_digits;
+    if (p->state.escape_digits < 4) return 1;
+    return finish_unicode_escape(p);
+}
+
+static int check_escape_byte(yajl_json_data *p, unsigned char c) {
+    switch (p->state.escape_state) {
+    case 1:
+        if (c == '"') {
+            p->state.escape_state = 0;
+            p->state.token_length = 0;
+        } else if (c == '\\') p->state.escape_state = 2;
+        break;
+    case 2:
+        if (c == 'u') start_unicode_escape(p);
+        else p->state.escape_state = 1;
+        break;
+    case 3:
+        return check_unicode_digit(p, c);
+    case 4:
+        if (c != '\\') return reject(p, "Invalid Unicode surrogate escape");
+        p->state.escape_state = 5;
+        break;
+    case 5:
+        if (c != 'u') return reject(p, "Invalid Unicode surrogate escape");
+        start_unicode_escape(p);
+        break;
+    }
+    return 1;
+}
+
+static int check_token_byte(yajl_json_data *p, unsigned char c, size_t budget) {
+    if (p->state.escape_state) {
+        ++p->state.token_length;
+        if (p->state.token_length > budget) return reject(p, "JSON token allocation limit exceeded");
+        return check_escape_byte(p, c);
+    }
+    if (c == '"') {
+        p->state.number_token = 0;
+        p->state.escape_state = 1;
+        p->state.token_length = 1;
+        return 1;
+    }
+    int number_char = (c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E';
+    if (p->state.number_token && number_char) {
+        ++p->state.token_length;
+        if (p->state.token_length > budget) return reject(p, "JSON token allocation limit exceeded");
+    } else {
+        p->state.number_token = (c >= '0' && c <= '9') || c == '-';
+        p->state.token_length = p->state.number_token ? 1 : 0;
+    }
+    return 1;
+}
+
+static int check_input(yajl_json_data *p, const char *buf, size_t length) {
+    const size_t budget = (size_t)JSON_STRING_SIZE * 8 + 16;
+    for (size_t i = 0; i < length; ++i) {
+        unsigned char c = (unsigned char)buf[i];
+        if (!c) return reject(p, "Invalid raw NUL byte in JSON input");
+        if (!check_utf8_byte(p, c) || !check_token_byte(p, c, budget)) return 0;
+    }
+    return 1;
+}
+static int status_result(yajl_json_data *p, const char *buf, size_t length, char **error_msg) {
+    if (p->state.callback_error) *error_msg = strdup(p->state.callback_error);
+    else if (p->status != yajl_status_ok) {
+        unsigned char *message = yajl_get_error(p->handle, 0, (const unsigned char *)buf, length);
+        *error_msg = strdup(message ? (const char *)message : "YAJL parsing failed");
+        if (message) yajl_free_error(p->handle, message);
+    } else return 1;
+    return -1;
+}
+int yajl_json_process_chunk(yajl_json_data *p, const char *buf, unsigned int length, char **error_msg) {
+    if (!error_msg) return -1;
     *error_msg = NULL;
-    base_offset=buf;
-
-    /* Feed our parser and catch any errors */
-    json->status = yajl_parse(json->handle, (unsigned char *)buf, size);
-
-    if (json->status != yajl_status_ok) {
-        if (json->depth_limit_exceeded != 0 || json->arg_num_limit_exceeded != 0) {
-            if (json->depth_limit_exceeded != 0) {
-                const char * err = "JSON depth limit exceeded";
-                *error_msg = strdup(err);
-            }
-            if (json->arg_num_limit_exceeded != 0) {
-                const char * err = "ARGUMENT number limit exceeded";
-                if (*error_msg == NULL) {
-                    *error_msg = strdup(err);
-                }
-                else {
-                    *error_msg = realloc(*error_msg, strlen(*error_msg) + strlen(err) + 1);
-                    strcat(*error_msg, err);
-                }
-            }
-        }
-        else {
-            unsigned char* yajl_err = yajl_get_error(json->handle, 0, (unsigned char *)buf, size);
-            *error_msg = strdup((char *)yajl_err);
-            yajl_free_error(json->handle, yajl_err);
-        }
+    if (!p || !p->handle || (!buf && length)) return -1;
+    if (p->state.completed) { *error_msg = strdup("YAJL document is already finalized"); return -1; }
+    if (p->state.callback_error || !check_input(p, buf, length)) return status_result(p, buf, length, error_msg);
+    p->status = yajl_parse(p->handle, (const unsigned char *)(buf ? buf : ""), length);
+    return status_result(p, buf, length, error_msg);
+}
+int yajl_json_process(yajl_json_data *p, const char *buf, unsigned int length, char **error_msg) {
+    return yajl_json_process_chunk(p, buf, length, error_msg);
+}
+int yajl_json_complete(yajl_json_data *p, char **error_msg) {
+    if (!error_msg) return -1;
+    *error_msg = NULL;
+    if (!p || !p->handle) return -1;
+    if (p->state.completed) { *error_msg = strdup("YAJL document is already finalized"); return -1; }
+    if (p->state.callback_error) return status_result(p, "", 0, error_msg);
+    if (p->state.utf8_remaining) {
+        reject(p, "Truncated UTF-8 sequence");
+        return status_result(p, "", 0, error_msg);
+    }
+    p->status = yajl_complete_parse(p->handle);
+    p->state.completed = 1;
+    if (status_result(p, "", 0, error_msg) < 0) return -1;
+    if (!p->silence && fflush(stdout) != 0) {
+        *error_msg = strdup("Unable to write JSON argument output");
         return -1;
     }
-
     return 1;
 }
-
-/**
- * Frees the resources used for JSON parsing.
- */
-int yajl_json_cleanup(yajl_json_data *json) {
-    assert(json != NULL);
-    if (json->handle != NULL) {
-        yajl_free(json->handle);
-        json->handle = NULL;
-    }
-    free(json->prefix);
-    free(json->current_key);
-    free(json);
-
+int yajl_json_cleanup(yajl_json_data *p) {
+    if (!p) return 1;
+    if (p->handle) yajl_free(p->handle);
+    for (size_t i = 0; i < p->state.frame_count; ++i) free(p->state.frames[i].key);
+    free(p->state.frames);
+    free(p->prefix);
+    free(p->current_key);
+    free(p);
     return 1;
 }
-
-#ifndef FILE_BUFFER_SIZE
-#define FILE_BUFFER_SIZE 10485760
-#endif
-
-int yajl_parse_file(yajl_json_data *json, const char *filename, char **error_msg) {
-    assert(json != NULL);
-    assert(filename != NULL);
-    assert(error_msg != NULL);
-
-    FILE *fp = fopen(filename, "r");
-    if (fp == NULL) {
-        *error_msg = strdup("Unable to open file");
+int yajl_parse_file(yajl_json_data *p, const char *filename, char **error_msg) {
+    if (!error_msg) return -1;
+    *error_msg = NULL;
+    if (!p || !filename) return -1;
+    if (p->depth_limit < 0 || p->arg_num_limit < 0) {
+        *error_msg = strdup("Invalid negative YAJL parser limit");
         return -1;
     }
-
-    char *buf = (char *)malloc(FILE_BUFFER_SIZE);
-    if (buf == NULL) {
-        fclose(fp);
-        *error_msg = strdup("Memory allocation error");
-        return -1;
+    FILE *input = fopen(filename, "rb");
+    if (!input) { *error_msg = strdup("Unable to open JSON file"); return -1; }
+    if (reset(p, error_msg) < 0) { fclose(input); return -1; }
+    char buffer[16384];
+    size_t length;
+    int rc = 1;
+    while ((length = fread(buffer, 1, sizeof(buffer), input)) != 0) {
+        rc = yajl_json_process_chunk(p, buffer, (unsigned int)length, error_msg);
+        if (rc < 0) break;
     }
-
-    size_t len = fread(buf, 1, FILE_BUFFER_SIZE - 1, fp);
-    int read_error = ferror(fp);
-    int too_long = 0;
-    if (!read_error && len == FILE_BUFFER_SIZE - 1) {
-        int extra = fgetc(fp);
-        if (extra != EOF) {
-            too_long = 1;
-        } else {
-            read_error = ferror(fp);
-        }
-    }
-    fclose(fp);
-
-    if (read_error) {
-        free(buf);
-        *error_msg = strdup("Error reading file");
-        return -1;
-    }
-    if (too_long) {
-        free(buf);
-        *error_msg = strdup("File too long");
-        return -1;
-    }
-    if (len == 0) {
-        free(buf);
-        *error_msg = strdup("Zero bytes read from file");
-        return -1;
-    }
-    buf[len] = '\0';
-
-    int rc = yajl_json_process_chunk(json, buf, (unsigned int)len, error_msg);
-    free(buf);
-    return rc == 1 ? 0 : -1;
+    if (rc > 0 && ferror(input)) { *error_msg = strdup("Error reading JSON file"); rc = -1; }
+    fclose(input);
+    if (rc > 0) rc = yajl_json_complete(p, error_msg);
+    return rc > 0 ? 0 : -1;
 }
 
 #endif

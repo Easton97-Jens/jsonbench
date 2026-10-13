@@ -1,120 +1,95 @@
+#ifndef JSONBENCH_PATHHANDLER_H
+#define JSONBENCH_PATHHANDLER_H
+
 #include <cstddef>
 #include <cstring>
+#include <exception>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "config.h"  // needs for JSON_STRING_SIZE (default 8192)
+#include "../config.h"
 
+// Preserve structural boundaries: dots and NULs in keys are data, not delimiters
+// to search when restoring a parent. The display convention remains historical
+// dotted paths with repeated array keys and no numeric array indexes.
 class PathHandler {
-  public:
-    bool m_error;
-    PathHandler() {
-        m_prefix[0] = '\0';
-        m_current_key[0] = '\0';
-        m_prefix_len = 0;
-        m_current_key_len = 0;
-        m_error = false;
-    }
+    struct Frame {
+        std::size_t prefix_length;
+        std::string key;
+    };
+    std::string prefix_;
+    std::string key_;
+    std::vector<Frame> frames_;
 
-    // set object key
-    void setKey(const char* key, size_t len) {
-        if (m_current_key_len + len >= JSON_STRING_SIZE) {
+    void start(bool array) {
+        if (m_error) return;
+        const bool root_array = array && frames_.empty();
+        std::size_t length = 5;
+        if (!root_array)
+            length = prefix_.size() + (prefix_.empty() ? 0 : 1) + key_.size();
+        if (length >= JSON_STRING_SIZE) {
             m_error = true;
             return;
         }
-        std::memcpy(m_current_key, key, len);
-        m_current_key[len] = '\0';
-        m_current_key_len = len;
-    }
-
-    // start_object '{' / start_array '['
-    void push() {
-        if (m_prefix_len == 0) {
-            std::memcpy(m_prefix, m_current_key, m_current_key_len);
-            m_prefix_len = m_current_key_len;
+        frames_.push_back({prefix_.size(), key_});
+        if (root_array) {
+            prefix_ = "array";
+            key_ = "array";
         } else {
-            if (m_prefix_len + 1 + m_current_key_len >= JSON_STRING_SIZE) {
-                // new key would be too long
-                m_error = true;
-                return;
-            }
-            m_prefix[m_prefix_len++] = '.';
-            std::memcpy(m_prefix + m_prefix_len, m_current_key, m_current_key_len);
-            m_prefix_len += m_current_key_len;
-        }
-        m_prefix[m_prefix_len] = '\0';
-    }
-
-    // end_object '}' / end_array ']'
-    void pop() {
-        if (m_prefix_len == 0) return;
-
-        size_t separator = m_prefix_len;
-        for (int i = static_cast<int>(m_prefix_len) - 1; i >= 0; --i) {
-            if (m_prefix[i] == '.') {
-                separator = static_cast<size_t>(i);
-                break;
-            }
-        }
-
-        if (separator < m_prefix_len) {
-            size_t new_len = m_prefix_len - separator - 1;
-            std::memcpy(m_current_key, m_prefix + separator + 1, new_len);
-            m_current_key[new_len] = '\0';
-            m_current_key_len = new_len;
-
-            m_prefix[separator] = '\0';
-            m_prefix_len = separator;
-        } else {
-            std::memcpy(m_current_key, m_prefix, m_prefix_len);
-            m_current_key[m_prefix_len] = '\0';
-            m_current_key_len = m_prefix_len;
-
-            m_prefix[0] = '\0';
-            m_prefix_len = 0;
+            if (!prefix_.empty()) prefix_ += '.';
+            prefix_ += key_;
         }
     }
 
-    // array - special case because we use 'array' prefix in case of v2
-    void startArraySpecial() {
-        if (m_prefix_len == 0 && m_current_key_len == 0) {
-            std::memcpy(m_prefix, "array", 5);
-            m_prefix_len = 5;
-            std::memcpy(m_current_key, "array", 5);
-            m_current_key_len = 5;
-            m_prefix[5] = '\0';
-            m_current_key[5] = '\0';
-        } else {
-            push();  // normal push
+  public:
+    bool m_error = false;
+
+    void setKey(const char* key, std::size_t length) noexcept {
+        if (m_error) return;
+        if (length >= JSON_STRING_SIZE || (key == nullptr && length != 0)) {
+            m_error = true;
+            return;
         }
+        try { key_.assign(key ? key : "", length); }
+        catch (const std::exception&) { m_error = true; }
     }
-
-    // build argument name from m_prefix
-    void buildArgName(char* out) {
-        if (m_prefix_len > 0) {
-            if (m_prefix_len + m_current_key_len + 1 > JSON_STRING_SIZE) {
-                m_error = true;
-                return;
-            }
-            std::memcpy(out, m_prefix, m_prefix_len);
-            std::memcpy(out + m_prefix_len, ".", 1);
-            std::memcpy(out + m_prefix_len + 1, m_current_key, m_current_key_len);
-            out[m_prefix_len + 1 + m_current_key_len] = '\0';
-        } else {
-            if (m_current_key_len > JSON_STRING_SIZE) {
-                m_error = true;
-                return;
-            }
-            std::memcpy(out, m_current_key, m_current_key_len);
-            out[m_current_key_len] = '\0';
+    void push() noexcept {
+        try { start(false); }
+        catch (const std::exception&) { m_error = true; }
+    }
+    void startArraySpecial() noexcept {
+        try { start(true); }
+        catch (const std::exception&) { m_error = true; }
+    }
+    void pop() noexcept {
+        if (m_error) return;
+        if (frames_.empty()) {
+            m_error = true;
+            return;
         }
+        prefix_.resize(frames_.back().prefix_length);
+        key_ = std::move(frames_.back().key);
+        frames_.pop_back();
     }
-
-    // may be these will be needed later...
-    // const char* getPrefix() const { return m_prefix; }
-    // size_t getPrefixLen() const { return m_prefix_len; }
-
-  private:
-        char   m_prefix[JSON_STRING_SIZE];
-        size_t m_prefix_len;
-        char   m_current_key[JSON_STRING_SIZE];
-        size_t m_current_key_len;
+    std::string name() {
+        const std::size_t length = prefix_.size() +
+            (prefix_.empty() ? 0 : 1) + key_.size();
+        if (m_error || length >= JSON_STRING_SIZE) {
+            m_error = true;
+            return {};
+        }
+        return prefix_.empty() ? key_ : prefix_ + '.' + key_;
+    }
+    // Compatibility for older callers; out must have JSON_STRING_SIZE bytes.
+    void buildArgName(char* out) noexcept {
+        try {
+            const std::string value = name();
+            if (m_error || out == nullptr) { m_error = true; return; }
+            std::memcpy(out, value.data(), value.size());
+            out[value.size()] = '\0';
+        } catch (const std::exception&) { m_error = true; }
+    }
 };
+
+#endif

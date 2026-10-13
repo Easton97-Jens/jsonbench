@@ -65,8 +65,9 @@ static int start_container(yajl_json_data *p, int array) {
         return reject(p, "JSON depth limit exceeded");
     }
     int root_array = array && p->frame_count == 0;
-    size_t length = root_array ? 5 :
-        p->prefix_len + (p->prefix_len ? 1 : 0) + p->current_key_len;
+    size_t length = 5;
+    if (!root_array)
+        length = p->prefix_len + (p->prefix_len ? 1 : 0) + p->current_key_len;
     if (length >= JSON_STRING_SIZE) return reject(p, "Argument name too long");
     if (p->frame_count == p->frame_capacity) {
         if (p->frame_capacity > SIZE_MAX / (2 * sizeof(yajl_path_frame)))
@@ -85,7 +86,8 @@ static int start_container(yajl_json_data *p, int array) {
     if (root_array) {
         memcpy(p->prefix, "array", 5);
         memcpy(p->current_key, "array", 5);
-        p->prefix_len = p->current_key_len = 5;
+        p->prefix_len = 5;
+        p->current_key_len = 5;
     } else {
         if (p->prefix_len) p->prefix[p->prefix_len++] = '.';
         memcpy(p->prefix + p->prefix_len, p->current_key, p->current_key_len);
@@ -118,13 +120,21 @@ static const yajl_callbacks callbacks = {
 static void clear_state(yajl_json_data *p) {
     for (size_t i = 0; i < p->frame_count; ++i) free(p->frames[i].key);
     p->frame_count = 0;
-    p->prefix_len = p->current_key_len = 0;
-    p->prefix[0] = p->current_key[0] = '\0';
-    p->current_depth = p->current_arg_num = 0;
-    p->depth_limit_exceeded = p->arg_num_limit_exceeded = 0;
+    p->prefix_len = 0;
+    p->current_key_len = 0;
+    p->prefix[0] = '\0';
+    p->current_key[0] = '\0';
+    p->current_depth = 0;
+    p->current_arg_num = 0;
+    p->depth_limit_exceeded = 0;
+    p->arg_num_limit_exceeded = 0;
     p->callback_error = NULL;
-    p->escape_state = p->escape_digits = p->escape_codepoint = 0;
-    p->low_surrogate_required = p->number_token = p->completed = 0;
+    p->escape_state = 0;
+    p->escape_digits = 0;
+    p->escape_codepoint = 0;
+    p->low_surrogate_required = 0;
+    p->number_token = 0;
+    p->completed = 0;
     p->token_length = 0;
     p->utf8_remaining = 0;
     p->utf8_min = 0x80;
@@ -152,7 +162,8 @@ int yajl_json_init(yajl_json_data **json, char **error_msg) {
     if (!p) { *error_msg = strdup("Unable to allocate YAJL parser"); return -1; }
     p->prefix = malloc(JSON_STRING_SIZE);
     p->current_key = malloc(JSON_STRING_SIZE);
-    p->depth_limit = p->arg_num_limit = 500;
+    p->depth_limit = 500;
+    p->arg_num_limit = 500;
     if (!p->prefix || !p->current_key || reset(p, error_msg) < 0) {
         if (!*error_msg) *error_msg = strdup("Unable to allocate YAJL path buffers");
         yajl_json_cleanup(p);
@@ -165,92 +176,131 @@ int yajl_json_init(yajl_json_data **json, char **error_msg) {
 // Narrow incremental token/Unicode guard. YAJL 2.1 does not validate that an
 // escaped surrogate pair's second unit is a low surrogate. It also grows lexer
 // buffers before callbacks can reject oversized values. JSON grammar stays YAJL's.
+static int check_utf8_byte(yajl_json_data *p, unsigned char c) {
+    // YAJL 2.1's native check accepts overlong encodings and surrogate
+    // codepoints; enforce Unicode scalar UTF-8 independently across chunks.
+    if (p->utf8_remaining) {
+        if (c < p->utf8_min || c > p->utf8_max)
+            return reject(p, "Invalid UTF-8 sequence");
+        --p->utf8_remaining;
+        p->utf8_min = 0x80;
+        p->utf8_max = 0xbf;
+        return 1;
+    }
+    if (c < 0x80) return 1;
+    p->utf8_min = 0x80;
+    p->utf8_max = 0xbf;
+    if (c >= 0xc2 && c <= 0xdf) {
+        p->utf8_remaining = 1;
+        return 1;
+    }
+    if (c >= 0xe0 && c <= 0xef) {
+        p->utf8_remaining = 2;
+        if (c == 0xe0) p->utf8_min = 0xa0;
+        if (c == 0xed) p->utf8_max = 0x9f;
+        return 1;
+    }
+    if (c >= 0xf0 && c <= 0xf4) {
+        p->utf8_remaining = 3;
+        if (c == 0xf0) p->utf8_min = 0x90;
+        if (c == 0xf4) p->utf8_max = 0x8f;
+        return 1;
+    }
+    return reject(p, "Invalid UTF-8 sequence");
+}
+
+static void start_unicode_escape(yajl_json_data *p) {
+    p->escape_state = 3;
+    p->escape_digits = 0;
+    p->escape_codepoint = 0;
+}
+
+static int finish_unicode_escape(yajl_json_data *p) {
+    if (p->low_surrogate_required) {
+        if (p->escape_codepoint < 0xdc00 || p->escape_codepoint > 0xdfff)
+            return reject(p, "Invalid Unicode surrogate escape");
+        p->low_surrogate_required = 0;
+        p->escape_state = 1;
+        return 1;
+    }
+    if (p->escape_codepoint >= 0xd800 && p->escape_codepoint <= 0xdbff) {
+        p->low_surrogate_required = 1;
+        p->escape_state = 4;
+        return 1;
+    }
+    if (p->escape_codepoint >= 0xdc00 && p->escape_codepoint <= 0xdfff)
+        return reject(p, "Invalid Unicode surrogate escape");
+    p->escape_state = 1;
+    return 1;
+}
+
+static int check_unicode_digit(yajl_json_data *p, unsigned char c) {
+    unsigned int digit;
+    if (c >= '0' && c <= '9') digit = c - '0';
+    else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
+    else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
+    else return reject(p, "Invalid Unicode escape");
+    p->escape_codepoint = p->escape_codepoint * 16 + digit;
+    ++p->escape_digits;
+    if (p->escape_digits < 4) return 1;
+    return finish_unicode_escape(p);
+}
+
+static int check_escape_byte(yajl_json_data *p, unsigned char c) {
+    switch (p->escape_state) {
+    case 1:
+        if (c == '"') {
+            p->escape_state = 0;
+            p->token_length = 0;
+        } else if (c == '\\') p->escape_state = 2;
+        break;
+    case 2:
+        if (c == 'u') start_unicode_escape(p);
+        else p->escape_state = 1;
+        break;
+    case 3:
+        return check_unicode_digit(p, c);
+    case 4:
+        if (c != '\\') return reject(p, "Invalid Unicode surrogate escape");
+        p->escape_state = 5;
+        break;
+    case 5:
+        if (c != 'u') return reject(p, "Invalid Unicode surrogate escape");
+        start_unicode_escape(p);
+        break;
+    }
+    return 1;
+}
+
+static int check_token_byte(yajl_json_data *p, unsigned char c, size_t budget) {
+    if (p->escape_state) {
+        ++p->token_length;
+        if (p->token_length > budget) return reject(p, "JSON token allocation limit exceeded");
+        return check_escape_byte(p, c);
+    }
+    if (c == '"') {
+        p->number_token = 0;
+        p->escape_state = 1;
+        p->token_length = 1;
+        return 1;
+    }
+    int number_char = (c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E';
+    if (p->number_token && number_char) {
+        ++p->token_length;
+        if (p->token_length > budget) return reject(p, "JSON token allocation limit exceeded");
+    } else {
+        p->number_token = (c >= '0' && c <= '9') || c == '-';
+        p->token_length = p->number_token ? 1 : 0;
+    }
+    return 1;
+}
+
 static int check_input(yajl_json_data *p, const char *buf, size_t length) {
     const size_t budget = (size_t)JSON_STRING_SIZE * 8 + 16;
     for (size_t i = 0; i < length; ++i) {
         unsigned char c = (unsigned char)buf[i];
         if (!c) return reject(p, "Invalid raw NUL byte in JSON input");
-        // YAJL 2.1's native check accepts overlong encodings and surrogate
-        // codepoints; enforce Unicode scalar UTF-8 independently across chunks.
-        if (p->utf8_remaining) {
-            if (c < p->utf8_min || c > p->utf8_max)
-                return reject(p, "Invalid UTF-8 sequence");
-            --p->utf8_remaining;
-            p->utf8_min = 0x80;
-            p->utf8_max = 0xbf;
-        } else if (c >= 0x80) {
-            p->utf8_min = 0x80;
-            p->utf8_max = 0xbf;
-            if (c >= 0xc2 && c <= 0xdf) p->utf8_remaining = 1;
-            else if (c >= 0xe0 && c <= 0xef) {
-                p->utf8_remaining = 2;
-                if (c == 0xe0) p->utf8_min = 0xa0;
-                if (c == 0xed) p->utf8_max = 0x9f;
-            } else if (c >= 0xf0 && c <= 0xf4) {
-                p->utf8_remaining = 3;
-                if (c == 0xf0) p->utf8_min = 0x90;
-                if (c == 0xf4) p->utf8_max = 0x8f;
-            } else return reject(p, "Invalid UTF-8 sequence");
-        }
-        if (p->escape_state) {
-            if (++p->token_length > budget) return reject(p, "JSON token allocation limit exceeded");
-            switch (p->escape_state) {
-            case 1:
-                if (c == '"') { p->escape_state = 0; p->token_length = 0; }
-                else if (c == '\\') p->escape_state = 2;
-                break;
-            case 2:
-                if (c == 'u') {
-                    p->escape_state = 3;
-                    p->escape_digits = p->escape_codepoint = 0;
-                } else p->escape_state = 1;
-                break;
-            case 3: {
-                unsigned int digit;
-                if (c >= '0' && c <= '9') digit = c - '0';
-                else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
-                else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
-                else return reject(p, "Invalid Unicode escape");
-                p->escape_codepoint = p->escape_codepoint * 16 + digit;
-                if (++p->escape_digits < 4) break;
-                if (p->low_surrogate_required) {
-                    if (p->escape_codepoint < 0xdc00 || p->escape_codepoint > 0xdfff)
-                        return reject(p, "Invalid Unicode surrogate escape");
-                    p->low_surrogate_required = 0;
-                    p->escape_state = 1;
-                } else if (p->escape_codepoint >= 0xd800 && p->escape_codepoint <= 0xdbff) {
-                    p->low_surrogate_required = 1;
-                    p->escape_state = 4;
-                } else {
-                    if (p->escape_codepoint >= 0xdc00 && p->escape_codepoint <= 0xdfff)
-                        return reject(p, "Invalid Unicode surrogate escape");
-                    p->escape_state = 1;
-                }
-                break;
-            }
-            case 4:
-                if (c != '\\') return reject(p, "Invalid Unicode surrogate escape");
-                p->escape_state = 5;
-                break;
-            case 5:
-                if (c != 'u') return reject(p, "Invalid Unicode surrogate escape");
-                p->escape_state = 3;
-                p->escape_digits = p->escape_codepoint = 0;
-                break;
-            }
-        } else if (c == '"') {
-            p->number_token = 0;
-            p->escape_state = 1;
-            p->token_length = 1;
-        } else {
-            int number_char = (c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E';
-            if (p->number_token && number_char) {
-                if (++p->token_length > budget) return reject(p, "JSON token allocation limit exceeded");
-            } else {
-                p->number_token = (c >= '0' && c <= '9') || c == '-';
-                p->token_length = p->number_token ? 1 : 0;
-            }
-        }
+        if (!check_utf8_byte(p, c) || !check_token_byte(p, c, budget)) return 0;
     }
     return 1;
 }

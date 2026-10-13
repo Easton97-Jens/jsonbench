@@ -25,8 +25,9 @@ class PathHandler {
     void start(bool array) {
         if (m_error) return;
         const bool root_array = array && frames_.empty();
-        const std::size_t length = root_array ? 5 :
-            prefix_.size() + (prefix_.empty() ? 0 : 1) + key_.size();
+        std::size_t length = 5;
+        if (!root_array)
+            length = prefix_.size() + (prefix_.empty() ? 0 : 1) + key_.size();
         if (length >= JSON_STRING_SIZE) {
             m_error = true;
             return;

@@ -17,6 +17,7 @@
 #include <vector>
 
 #include <jsoncons/json_options.hpp>
+#include <jsoncons/json_exception.hpp>
 #include <jsoncons/json_reader.hpp>
 #include <jsoncons/json_visitor.hpp>
 
@@ -27,6 +28,11 @@ struct jsoncons_parser {
 };
 
 namespace {
+
+class UnicodeError final : public std::invalid_argument {
+  public:
+    using std::invalid_argument::invalid_argument;
+};
 
 // jsoncons 1.3.2 silently drops lone escaped low surrogates and does not check
 // that the second code unit of a pair is a low surrogate. Validate just this
@@ -43,7 +49,7 @@ class UnicodeSource {
     std::size_t column_ = 0;
 
     [[noreturn]] void invalid() const {
-        throw std::invalid_argument("Invalid Unicode surrogate escape at line " +
+        throw UnicodeError("Invalid Unicode surrogate escape at line " +
             std::to_string(line_) + ", column " + std::to_string(column_));
     }
 
@@ -137,10 +143,8 @@ class TemporaryAllocator {
     template <typename U> bool operator!=(const TemporaryAllocator<U>&) const { return false; }
 };
 
-// Keep structural boundaries rather than finding them by searching for dots.
-// PathHandler cannot distinguish literal dots/empty keys from nesting, and its
-// fixed buffers have unsafe boundary checks. This stack follows the same usual
-// dotted naming convention without copying those limitations.
+// Keep structural boundaries explicitly so dots, empty keys and NULs remain
+// key data while argument names follow the historical dotted convention.
 class ArgumentVisitor final : public jsoncons::default_json_visitor {
     struct Frame {
         std::size_t prefix_length;
@@ -166,8 +170,9 @@ class ArgumentVisitor final : public jsoncons::default_json_visitor {
             return;
         }
         const bool root_array = array && stack_.empty();
-        const std::size_t length = root_array ? 5 :
-            prefix_.size() + (prefix_.empty() ? 0 : 1) + key_.size();
+        std::size_t length = prefix_.size() + key_.size();
+        if (!prefix_.empty()) ++length;
+        if (root_array) length = 5;
         if (length >= JSON_STRING_SIZE) {
             fail("Argument name too long", ec);
             return;
@@ -309,9 +314,9 @@ extern "C" int jsoncons_json_init(jsoncons_parser** parser, char** error_msg) {
     if (parser == nullptr) return -1;
     *parser = nullptr;
     try {
-        *parser = new jsoncons_parser{};
+        *parser = std::make_unique<jsoncons_parser>().release();
         return 0;
-    } catch (const std::exception& e) {
+    } catch (const std::bad_alloc& e) {
         *error_msg = strdup(e.what());
         return 1;
     } catch (...) {
@@ -362,6 +367,9 @@ extern "C" int jsoncons_parse_file(jsoncons_parser* parser, const char* filename
             return 2;
         }
         return 0;
+    } catch (const jsoncons::json_exception& e) {
+        *error_msg = strdup(e.what());
+        return 2;
     } catch (const std::exception& e) {
         *error_msg = strdup(e.what());
         return 2;
@@ -383,7 +391,7 @@ extern "C" int jsoncons_set_silence(jsoncons_parser* parser, int silence) {
     return 0;
 }
 extern "C" int jsoncons_json_cleanup(jsoncons_parser* parser) {
-    delete parser;
+    const std::unique_ptr<jsoncons_parser> owned(parser);
     return 0;
 }
 
